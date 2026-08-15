@@ -72,6 +72,9 @@ val LEG_DELTA = listOf(
     "+0:07", "−0:05", "+0:12", "−0:11", "+0:14", "+0:06", "+0:18", "+0:24",
 )
 
+/** The sled the race pushes, in kilograms — mirrors the STN 2 leg above. */
+const val RACE_SLED_KG = 152f
+
 const val ROXZONE_TOTAL = "3:42"
 const val RACE_RUN_AVG = "4:38"
 const val RACE_PROJECTED = "1:22:40"
@@ -167,14 +170,13 @@ val MEALS = listOf(
 
 // ── Body ────────────────────────────────────────────────────────────────────
 
+/**
+ * The design's twelve weigh-ins. Now that the Body screen keeps a real log,
+ * these are only what [WeightRepository] seeds a fresh install with.
+ */
 val WEIGHT_SERIES = listOf(
     84.2f, 84.0f, 83.5f, 83.6f, 83.1f, 82.8f, 82.9f, 82.4f, 82.1f, 81.9f, 81.6f, 81.4f,
 )
-
-/** The design pins the chart's top edge to this weight. */
-const val WEIGHT_CHART_TOP = 84.6f
-
-val WEIGHT_MONTHS = listOf("May", "Jun", "Jul", "Aug")
 
 // ── Summary ─────────────────────────────────────────────────────────────────
 

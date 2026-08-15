@@ -15,6 +15,8 @@ import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
@@ -23,9 +25,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.repsrox.app.data.RECENT
 import com.repsrox.app.data.SESSIONS_DONE
 import com.repsrox.app.data.SESSIONS_PLANNED
+import com.repsrox.app.data.formatKilos
+import com.repsrox.app.data.formatSigned
+import com.repsrox.app.data.summarise
+import com.repsrox.app.ui.BodyViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.Screen
 import com.repsrox.app.ui.components.AccentAction
@@ -48,7 +55,10 @@ import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
 
 @Composable
-fun TodayScreen(viewModel: RepsRoxViewModel) {
+fun TodayScreen(viewModel: RepsRoxViewModel, bodyViewModel: BodyViewModel = viewModel()) {
+    val weight = bodyViewModel.weighIns.collectAsState().value
+        ?.let { entries -> remember(entries) { summarise(entries) } }
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -75,15 +85,15 @@ fun TodayScreen(viewModel: RepsRoxViewModel) {
             ) {
                 Text(
                     buildAnnotatedString {
-                        append("81.4")
+                        append(weight?.let { formatKilos(it.latest.kg) } ?: "—")
                         withStyle(SpanStyle(fontSize = 12.sp, color = TextMeta)) { append(" kg") }
                     },
                     color = TextPrimary,
                     style = oswald(22f, lineHeight = 1.2f),
                 )
                 Text(
-                    "−0.6 in 14d",
-                    color = Accent,
+                    weight?.fortnightChange?.let { "${formatSigned(it)} in 14d" } ?: "log a weigh-in",
+                    color = if (weight?.fortnightChange != null) Accent else TextMeta,
                     style = inter(11f, lineHeight = 1f),
                     modifier = Modifier.padding(top = 3.dp),
                 )
