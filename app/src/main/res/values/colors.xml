@@ -1,3 +1,5 @@
 <resources>
-    <color name="ic_launcher_background">#FF6B35</color>
+    <!-- The mark sits on the app's own ground rather than a coloured plate. -->
+    <color name="ic_launcher_background">#FF101113</color>
+    <color name="screen_bg">#FF101113</color>
 </resources>

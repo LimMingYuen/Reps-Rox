@@ -1,0 +1,42 @@
+# Normalize all text files to LF in the repository.
+# Working-tree endings are still governed by core.autocrlf.
+* text=auto
+
+# Sources and config — always LF in the repo.
+*.kt      text diff=kotlin
+*.kts     text diff=kotlin
+*.java    text diff=java
+*.xml     text
+*.pro     text
+*.toml    text
+*.md      text diff=markdown
+*.properties text
+*.json    text
+*.yml     text
+*.yaml    text
+
+# Shell scripts must keep LF even on Windows checkouts,
+# otherwise they fail to execute on Linux/macOS and CI.
+gradlew   text eol=lf
+*.sh      text eol=lf
+
+# Windows batch files require CRLF.
+gradlew.bat text eol=crlf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+
+# Binaries — never convert, never diff as text.
+*.jar     binary
+*.ttf     binary
+*.otf     binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.webp    binary
+*.ico     binary
+*.keystore binary
+*.jks     binary
+*.aar     binary
+*.apk     binary
+*.so      binary
