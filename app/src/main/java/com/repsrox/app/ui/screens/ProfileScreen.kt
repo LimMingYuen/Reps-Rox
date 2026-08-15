@@ -17,14 +17,19 @@ import androidx.compose.material.icons.outlined.SportsScore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.repsrox.app.data.PR_LIFTS
 import com.repsrox.app.data.PR_STATIONS
 import com.repsrox.app.data.PersonalRecord
+import com.repsrox.app.data.formatKilos
+import com.repsrox.app.ui.BodyViewModel
 import com.repsrox.app.ui.components.Panel
 import com.repsrox.app.ui.components.RuledRow
 import com.repsrox.app.ui.components.SectionLabel
@@ -41,7 +46,11 @@ import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
 
 @Composable
-fun ProfileScreen() {
+fun ProfileScreen(viewModel: BodyViewModel = viewModel()) {
+    // The same log the Body screen keeps, so the two never disagree on a weight.
+    val entries by viewModel.weighIns.collectAsState()
+    val weight = entries?.lastOrNull()?.let { "${formatKilos(it.kg)} kg · " }.orEmpty()
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -68,7 +77,7 @@ fun ProfileScreen() {
                     style = oswald(17f, FontWeight.W500, lineHeight = 1.2f, tracking = 0.03f),
                 )
                 Text(
-                    "Hybrid · 81.4 kg · no race booked",
+                    "Hybrid · ${weight}no race booked",
                     color = TextMeta,
                     style = inter(11f),
                     modifier = Modifier.padding(top = 3.dp),
