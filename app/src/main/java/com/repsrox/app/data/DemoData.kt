@@ -1,5 +1,7 @@
 package com.repsrox.app.data
 
+import java.time.DayOfWeek
+
 /**
  * Fixed sample content, transcribed from the "Reps and Rox App" design. This is
  * the shell's stand-in for a real store — every screen reads from here so the
@@ -8,10 +10,7 @@ package com.repsrox.app.data
 
 // ── Strength session ────────────────────────────────────────────────────────
 
-data class WorkSet(val reps: Int, val kg: String)
-
-data class Exercise(val name: String, val target: String, val sets: List<WorkSet>)
-
+/** The design's own session, now what [PlanRepository] seeds today's slot with. */
 val EXERCISES = listOf(
     Exercise(
         "Back squat", "5 × 5 · 120 kg",
@@ -37,8 +36,6 @@ val EXERCISES = listOf(
 
 /** The design's fixed elapsed clock for the live session, in seconds. */
 const val LIVE_ELAPSED = 1877
-
-const val PLANNED_SETS = 18
 
 // ── Race simulation ─────────────────────────────────────────────────────────
 
@@ -81,46 +78,31 @@ const val RACE_PROJECTED = "1:22:40"
 
 // ── Week plan ───────────────────────────────────────────────────────────────
 
-enum class SessionKind { STRENGTH, RUN, RACE, REST }
-
-enum class DayStatus { DONE, TODAY, PLANNED, REST }
-
-data class PlannedDay(
-    val day: String,
-    val date: String,
+/**
+ * One row of the design's week, held against a weekday rather than a date so
+ * [PlanRepository] can lay the whole week onto whichever week the app is opened
+ * in. Whether a session is done is not carried: the seed reads as done for the
+ * days already behind you, which is the only honest answer for content nobody
+ * actually trained.
+ */
+data class SeedSession(
+    val dayOfWeek: DayOfWeek,
     val name: String,
-    val meta: String,
-    val status: DayStatus,
+    val note: String,
     val kind: SessionKind,
+    val exercises: List<Exercise> = emptyList(),
 )
 
-val WEEK = listOf(
-    PlannedDay("MON", "11", "Upper pull + carries", "Done · 51:04 · 3.8 t", DayStatus.DONE, SessionKind.STRENGTH),
-    PlannedDay("TUE", "12", "Rest", "Walk 6 km", DayStatus.REST, SessionKind.REST),
-    PlannedDay("WED", "13", "Compromised running", "Done · 4 × (1 km + 20 wall balls)", DayStatus.DONE, SessionKind.RUN),
-    PlannedDay("THU", "14", "8 km Zone 2", "Done · 42:18", DayStatus.DONE, SessionKind.RUN),
-    PlannedDay("SAT", "15", "Lower push + sled finisher", "Today · 5 exercises · 18 sets", DayStatus.TODAY, SessionKind.STRENGTH),
-    PlannedDay("SUN", "16", "Long Z2 · 14 km", "Planned · 75 min", DayStatus.PLANNED, SessionKind.RUN),
-    PlannedDay("MON", "17", "Full race sim", "Planned · 8 stations", DayStatus.PLANNED, SessionKind.RACE),
+/** The design's week, in its own order, laid across a Monday-to-Sunday week. */
+val WEEK_TEMPLATE = listOf(
+    SeedSession(DayOfWeek.MONDAY, "Upper pull + carries", "51:04 · 3.8 t", SessionKind.STRENGTH),
+    SeedSession(DayOfWeek.TUESDAY, "Rest", "Walk 6 km", SessionKind.REST),
+    SeedSession(DayOfWeek.WEDNESDAY, "Compromised running", "4 × (1 km + 20 wall balls)", SessionKind.RUN),
+    SeedSession(DayOfWeek.THURSDAY, "8 km Zone 2", "42:18", SessionKind.RUN),
+    SeedSession(DayOfWeek.FRIDAY, "Lower push + sled finisher", "", SessionKind.STRENGTH, EXERCISES),
+    SeedSession(DayOfWeek.SATURDAY, "Long Z2 · 14 km", "75 min", SessionKind.RUN),
+    SeedSession(DayOfWeek.SUNDAY, "Full race sim", "8 stations", SessionKind.RACE),
 )
-
-// ── Today ───────────────────────────────────────────────────────────────────
-
-data class RecentSession(
-    val kind: SessionKind,
-    val name: String,
-    val meta: String,
-    val whenLabel: String,
-)
-
-val RECENT = listOf(
-    RecentSession(SessionKind.RUN, "8 km Zone 2", "42:18 · 5:17 /km · 148 bpm", "Thu"),
-    RecentSession(SessionKind.STRENGTH, "Upper pull + carries", "51:04 · 3.8 t · 16 sets", "Wed"),
-    RecentSession(SessionKind.RACE, "Half-race sim", "38:52 · 4 stations", "Sun"),
-)
-
-const val SESSIONS_DONE = 3
-const val SESSIONS_PLANNED = 5
 
 // ── Run ─────────────────────────────────────────────────────────────────────
 
@@ -176,18 +158,6 @@ val MEALS = listOf(
  */
 val WEIGHT_SERIES = listOf(
     84.2f, 84.0f, 83.5f, 83.6f, 83.1f, 82.8f, 82.9f, 82.4f, 82.1f, 81.9f, 81.6f, 81.4f,
-)
-
-// ── Summary ─────────────────────────────────────────────────────────────────
-
-data class SummaryRow(val name: String, val detail: String)
-
-val SUMMARY_ROWS = listOf(
-    SummaryRow("Back squat", "5 / 5 / 5 / 5 / 5 · 120 kg"),
-    SummaryRow("Romanian deadlift", "8 / 8 / 8 / 8 · 100 kg"),
-    SummaryRow("Bulgarian split squat", "10 / 10 / 10 · 24 kg"),
-    SummaryRow("Sled push", "4 × 25 m · 150 kg"),
-    SummaryRow("Wall balls", "50 / 50 · 9 kg"),
 )
 
 // ── Profile ─────────────────────────────────────────────────────────────────

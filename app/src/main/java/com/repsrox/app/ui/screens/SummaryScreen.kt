@@ -17,9 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.repsrox.app.data.SUMMARY_ROWS
+import com.repsrox.app.data.LIVE_ELAPSED
+import com.repsrox.app.data.formatTonnes
+import com.repsrox.app.data.logLine
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.Screen
+import com.repsrox.app.ui.formatMinutes
 import com.repsrox.app.ui.components.Panel
 import com.repsrox.app.ui.components.QuietAction
 import com.repsrox.app.ui.components.RuledRow
@@ -39,6 +42,14 @@ import com.repsrox.app.ui.theme.oswald
 
 @Composable
 fun SummaryScreen(viewModel: RepsRoxViewModel) {
+    val session = viewModel.activeSession
+    val exercises = viewModel.activeExercises
+    // Nothing times a session yet, so the duration stays the design's fixed clock;
+    // everything countable is read off what was actually worked through.
+    val volume = exercises.fold(0f) { total, exercise ->
+        total + exercise.sets.fold(0f) { sum, set -> sum + set.reps * (set.kg.toFloatOrNull() ?: 0f) }
+    }
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -51,7 +62,7 @@ fun SummaryScreen(viewModel: RepsRoxViewModel) {
         ) {
             SectionLabel("Session banked", color = Accent)
             Text(
-                "Lower push + sled finisher",
+                session?.name ?: "Lower push + sled finisher",
                 color = TextPrimary,
                 style = oswald(22f, FontWeight.W500, lineHeight = 1.15f),
                 modifier = Modifier.padding(top = 8.dp),
@@ -60,9 +71,11 @@ fun SummaryScreen(viewModel: RepsRoxViewModel) {
                 Modifier.padding(top = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                StatBlock("58:12", "duration", valueSize = 20f)
-                StatBlock("4.4t", "volume", valueSize = 20f)
-                StatBlock("18", "sets", valueSize = 20f)
+                StatBlock(formatMinutes(LIVE_ELAPSED), "duration", valueSize = 20f)
+                if (volume > 0f) {
+                    StatBlock(formatTonnes(volume), "volume", valueSize = 20f)
+                }
+                StatBlock("${viewModel.totalSetsDone}", "sets", valueSize = 20f)
             }
         }
 
@@ -99,15 +112,15 @@ fun SummaryScreen(viewModel: RepsRoxViewModel) {
 
         Column {
             SectionLabel("What you did", modifier = Modifier.padding(bottom = 4.dp))
-            SUMMARY_ROWS.forEach { row ->
+            exercises.forEach { exercise ->
                 RuledRow(verticalPadding = 10.dp) {
                     Text(
-                        row.name,
+                        exercise.name,
                         color = TextPrimary,
                         style = inter(12.5f, FontWeight.W500, lineHeight = 1.3f),
                         modifier = Modifier.weight(1f),
                     )
-                    Text(row.detail, color = TextSecondary, style = mono(11.5f))
+                    Text(exercise.logLine(), color = TextSecondary, style = mono(11.5f))
                 }
             }
         }
