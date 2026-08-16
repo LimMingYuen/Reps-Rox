@@ -8,9 +8,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.lifecycle.ViewModel
 import com.repsrox.app.data.EXERCISES
+import com.repsrox.app.data.Exercise
 import com.repsrox.app.data.LEGS
 import com.repsrox.app.data.MEALS
+import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.RUN_SECONDS_PER_KM
+import com.repsrox.app.data.SessionKind
+import com.repsrox.app.data.weekStart
+import java.time.LocalDate
 import java.util.Locale
 
 /**
@@ -22,7 +27,22 @@ class RepsRoxViewModel : ViewModel() {
     var screen by mutableStateOf(Screen.Today)
         private set
 
-    /** Sets banked per exercise, indexed alongside [EXERCISES]. */
+    /**
+     * The session being tracked, once one has been opened off the plan. Null until
+     * then, which is when the screens fall back to the design's own content.
+     */
+    var activeSession by mutableStateOf<PlannedSession?>(null)
+        private set
+
+    /** The week being looked at, shared by the week screen and the plan shelf. */
+    var weekStart by mutableStateOf(LocalDate.now().weekStart())
+        private set
+
+    /** The day a new session is opened against — whichever one was tapped. */
+    var buildDate by mutableStateOf(LocalDate.now())
+        private set
+
+    /** Sets banked per exercise, indexed alongside [activeExercises]. */
     val setsDone = mutableStateListOf(2, 0, 0, 0, 0)
 
     var currentExercise by mutableIntStateOf(0)
@@ -51,6 +71,16 @@ class RepsRoxViewModel : ViewModel() {
 
     // ── Derived ─────────────────────────────────────────────────────────────
 
+    /**
+     * What the live tracker works through. A session with no exercises of its own
+     * — a run, or one of the design's own week rows — falls back to the design's
+     * session rather than opening a tracker with nothing in it.
+     */
+    val activeExercises: List<Exercise>
+        get() = activeSession?.exercises?.takeIf { it.isNotEmpty() } ?: EXERCISES
+
+    val plannedSets: Int get() = activeExercises.sumOf { it.sets.size }
+
     val totalSetsDone: Int get() = setsDone.sum()
 
     val leg get() = LEGS[legIndex]
@@ -67,6 +97,38 @@ class RepsRoxViewModel : ViewModel() {
 
     fun go(destination: Screen) {
         screen = destination
+    }
+
+    fun goToWeek(start: LocalDate) {
+        weekStart = start
+    }
+
+    /** Opens the builder against [date], so a session lands on the day it was added from. */
+    fun goBuild(date: LocalDate) {
+        buildDate = date
+        screen = Screen.Build
+    }
+
+    /**
+     * Opens a session off the plan: what has been done opens its summary, what is
+     * still ahead opens the tracker it needs. Reopening the session already being
+     * tracked keeps whatever has been banked into it; a different one starts clean.
+     */
+    fun open(session: PlannedSession) {
+        if (session.id != activeSession?.id) {
+            activeSession = session
+            val exercises = session.exercises.takeIf { it.isNotEmpty() } ?: EXERCISES
+            setsDone.clear()
+            setsDone.addAll(List(exercises.size) { 0 })
+            currentExercise = 0
+            restSeconds = 0
+        }
+        screen = when {
+            session.done -> Screen.Summary
+            session.kind == SessionKind.RUN -> Screen.Run
+            session.kind == SessionKind.RACE -> Screen.Race
+            else -> Screen.Live
+        }
     }
 
     fun back(): Boolean {
