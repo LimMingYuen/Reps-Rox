@@ -1,46 +1,61 @@
-<!-- The Reps & Rox mark, `ring` variant, scaled into the adaptive icon's safe zone. -->
+<!--
+  The Reps & Rox mark, `ring` variant, scaled into the adaptive icon's safe zone.
+
+  Drawn at its natural size (outer diameter 72 = the full 72dp safe zone), then
+  scaled to 0.9167 so the ring's outer edge lands at a 66dp diameter. That leaves
+  3dp of clearance inside the mask on every side, which keeps the segments intact
+  under circular masks and the extra shrink some launchers apply.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <group android:name="ring">
-        <path
-            android:pathData="M83.80,45.12 A31.09,31.09 0 0 1 83.80,62.87"
-            android:strokeColor="#FFFF3B14"
-            android:strokeWidth="9.82" />
-        <path
-            android:pathData="M81.35,68.79 A31.09,31.09 0 0 1 68.79,81.35"
-            android:strokeColor="#FFFF3B14"
-            android:strokeWidth="9.82" />
-        <path
-            android:pathData="M62.88,83.80 A31.09,31.09 0 0 1 45.13,83.80"
-            android:strokeColor="#FFFF3B14"
-            android:strokeWidth="9.82" />
-        <path
-            android:pathData="M39.21,81.35 A31.09,31.09 0 0 1 26.65,68.79"
-            android:strokeColor="#FFFF3B14"
-            android:strokeWidth="9.82" />
-        <path
-            android:pathData="M24.20,62.88 A31.09,31.09 0 0 1 24.20,45.13"
-            android:strokeColor="#FFFF3B14"
-            android:strokeWidth="9.82" />
-        <path
-            android:pathData="M26.65,39.21 A31.09,31.09 0 0 1 39.21,26.65"
-            android:strokeColor="#FFFF3B14"
-            android:strokeWidth="9.82" />
-        <path
-            android:pathData="M45.12,24.20 A31.09,31.09 0 0 1 62.87,24.20"
-            android:strokeColor="#FFFF3B14"
-            android:strokeWidth="9.82" />
-        <path
-            android:pathData="M68.79,26.65 A31.09,31.09 0 0 1 81.35,39.21"
-            android:strokeColor="#FFFF3B14"
-            android:strokeWidth="9.82" />
-    </group>
+    <group
+        android:name="mark"
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.9167"
+        android:scaleY="0.9167">
 
-    <path
-        android:fillColor="#FFFF3B14"
-        android:pathData="M44.18,40.91 L55.64,54.00 L44.18,67.09 L52.36,67.09 L63.82,54.00 L52.36,40.91 Z" />
+        <group android:name="ring">
+            <path
+                android:pathData="M83.80,45.12 A31.09,31.09 0 0 1 83.80,62.87"
+                android:strokeColor="#FFFF3B14"
+                android:strokeWidth="9.82" />
+            <path
+                android:pathData="M81.35,68.79 A31.09,31.09 0 0 1 68.79,81.35"
+                android:strokeColor="#FFFF3B14"
+                android:strokeWidth="9.82" />
+            <path
+                android:pathData="M62.88,83.80 A31.09,31.09 0 0 1 45.13,83.80"
+                android:strokeColor="#FFFF3B14"
+                android:strokeWidth="9.82" />
+            <path
+                android:pathData="M39.21,81.35 A31.09,31.09 0 0 1 26.65,68.79"
+                android:strokeColor="#FFFF3B14"
+                android:strokeWidth="9.82" />
+            <path
+                android:pathData="M24.20,62.88 A31.09,31.09 0 0 1 24.20,45.13"
+                android:strokeColor="#FFFF3B14"
+                android:strokeWidth="9.82" />
+            <path
+                android:pathData="M26.65,39.21 A31.09,31.09 0 0 1 39.21,26.65"
+                android:strokeColor="#FFFF3B14"
+                android:strokeWidth="9.82" />
+            <path
+                android:pathData="M45.12,24.20 A31.09,31.09 0 0 1 62.87,24.20"
+                android:strokeColor="#FFFF3B14"
+                android:strokeWidth="9.82" />
+            <path
+                android:pathData="M68.79,26.65 A31.09,31.09 0 0 1 81.35,39.21"
+                android:strokeColor="#FFFF3B14"
+                android:strokeWidth="9.82" />
+        </group>
+
+        <path
+            android:fillColor="#FFFF3B14"
+            android:pathData="M44.18,40.91 L55.64,54.00 L44.18,67.09 L52.36,67.09 L63.82,54.00 L52.36,40.91 Z" />
+    </group>
 </vector>

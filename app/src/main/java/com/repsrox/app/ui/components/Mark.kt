@@ -15,9 +15,19 @@ import com.repsrox.app.ui.theme.Accent
 /**
  * The Reps & Rox mark, `ring` variant: a broken ring of eight arcs around a
  * chevron. Geometry is the design's own 108-unit square, scaled to [size].
+ *
+ * [ringRotation] turns the ring in degrees, leaving the chevron upright — the
+ * segments carry the motion, the arrow stays readable. Because the eight
+ * segments sit on 45° centres, any multiple of 45° is visually identical to
+ * rest, so an animation can land on one and stop without a seam.
  */
 @Composable
-fun Mark(size: Dp, modifier: Modifier = Modifier, color: Color = Accent) {
+fun Mark(
+    size: Dp,
+    modifier: Modifier = Modifier,
+    color: Color = Accent,
+    ringRotation: Float = 0f,
+) {
     Canvas(modifier.size(size)) {
         val k = this.size.minDimension / VIEW_BOX
 
@@ -28,7 +38,7 @@ fun Mark(size: Dp, modifier: Modifier = Modifier, color: Color = Accent) {
         repeat(RING_SEGMENTS) { i ->
             drawArc(
                 color = color,
-                startAngle = i * 45f - 16.586f,
+                startAngle = i * 45f - 16.586f + ringRotation,
                 sweepAngle = 33.171f,
                 useCenter = false,
                 topLeft = Offset(inset, inset),
