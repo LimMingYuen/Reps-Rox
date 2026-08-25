@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material3.Icon
@@ -37,6 +38,7 @@ import com.repsrox.app.data.summarise
 import com.repsrox.app.data.totalSets
 import com.repsrox.app.data.volumeKg
 import com.repsrox.app.ui.BodyViewModel
+import com.repsrox.app.ui.PlanViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.Screen
 import com.repsrox.app.ui.components.AccentAction
@@ -58,11 +60,33 @@ import com.repsrox.app.ui.theme.Track
 import com.repsrox.app.ui.theme.inter
 import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
+import java.util.Locale
+import java.time.format.TextStyle as DateTextStyle
 
 @Composable
-fun TodayScreen(viewModel: RepsRoxViewModel, bodyViewModel: BodyViewModel = viewModel()) {
+fun TodayScreen(
+    viewModel: RepsRoxViewModel,
+    bodyViewModel: BodyViewModel = viewModel(),
+    planViewModel: PlanViewModel = viewModel(),
+) {
     val weight = bodyViewModel.weighIns.collectAsState().value
         ?.let { entries -> remember(entries) { summarise(entries) } }
+
+    val plan = planViewModel.sessions.collectAsState().value.orEmpty()
+    val today = remember { LocalDate.now() }
+    // A rest day is not something to start, so the card looks past it.
+    val todaySession = plan.firstOrNull { it.date == today && it.kind != SessionKind.REST }
+
+    // The ring reads this week only, not everything ever planned.
+    val dates = today.weekStart().weekDates().toSet()
+    val week = plan.filter { it.date in dates && it.kind != SessionKind.REST }
+    val banked = week.count { it.done }
+    // Week one is the week the plan starts in, so the number means something.
+    val weekNumber = plan.minOfOrNull { it.date }
+        ?.let { ChronoUnit.WEEKS.between(it.weekStart(), today.weekStart()) + 1 }
+        ?.takeIf { it >= 1 }
 
     Column(
         Modifier
@@ -71,16 +95,23 @@ fun TodayScreen(viewModel: RepsRoxViewModel, bodyViewModel: BodyViewModel = view
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Column {
-            SectionLabel("Saturday 15 August")
+            SectionLabel(
+                "${today.dayOfWeek.getDisplayName(DateTextStyle.FULL, Locale.US)} " +
+                    "${today.dayOfMonth} ${today.month.getDisplayName(DateTextStyle.FULL, Locale.US)}",
+            )
             Text(
-                "Week 3 · Build",
+                weekNumber?.let { "Week $it" } ?: "This week",
                 color = TextPrimary,
                 style = oswald(26f, FontWeight.W500, lineHeight = 1.15f, tracking = 0.02f),
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
 
-        TodaySessionCard(onStart = { viewModel.go(Screen.Live) })
+        TodaySessionCard(
+            session = todaySession,
+            onStart = { todaySession?.let(viewModel::open) },
+            onPlan = { viewModel.go(Screen.Build) },
+        )
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Tile(
@@ -114,7 +145,12 @@ fun TodayScreen(viewModel: RepsRoxViewModel, bodyViewModel: BodyViewModel = view
             }
         }
 
-        WeekRingCard(onSeeWeek = { viewModel.go(Screen.Plan) })
+        WeekRingCard(
+            banked = banked,
+            planned = week.size,
+            next = week.firstOrNull { !it.done && it.date >= today },
+            onSeeWeek = { viewModel.go(Screen.Plan) },
+        )
 
         FuelStrip(onClick = { viewModel.go(Screen.Fuel) })
 
@@ -158,33 +194,72 @@ fun TodayScreen(viewModel: RepsRoxViewModel, bodyViewModel: BodyViewModel = view
     }
 }
 
+private const val RECENT_ROWS = 3
+
 @Composable
-private fun TodaySessionCard(onStart: () -> Unit) {
+private fun TodaySessionCard(
+    session: PlannedSession?,
+    onStart: () -> Unit,
+    onPlan: () -> Unit,
+) {
+    if (session == null) {
+        Panel(onClick = onPlan, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                "Today · open".uppercase(),
+                color = Accent,
+                style = inter(10f, FontWeight.W500, lineHeight = 1f, tracking = 0.12f),
+            )
+            Text(
+                "Nothing planned",
+                color = TextPrimary,
+                style = oswald(21f, FontWeight.W500, lineHeight = 1.15f, tracking = 0.02f),
+            )
+            AccentAction(
+                "Plan a session",
+                icon = Icons.Filled.Add,
+                verticalPadding = 10.dp,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onPlan,
+            )
+        }
+        return
+    }
+
     Panel(
         onClick = onStart,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Today · strength".uppercase(),
+                "Today · ${session.kind.name.lowercase()}".uppercase(),
                 color = Accent,
                 style = inter(10f, FontWeight.W500, lineHeight = 1f, tracking = 0.12f),
             )
             Spacer(Modifier.weight(1f))
-            Text("≈ 58 min", color = TextMeta, style = mono(11f))
+            if (session.done) {
+                Text("banked", color = TextMeta, style = mono(11f))
+            }
         }
         Text(
-            "Lower push + sled finisher",
+            session.name,
             color = TextPrimary,
             style = oswald(21f, FontWeight.W500, lineHeight = 1.15f, tracking = 0.02f),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            StatBlock("5", "exercises")
-            StatBlock("18", "sets")
-            StatBlock("4.2t", "planned volume")
+        // A session that prescribes exercises can be counted; a run is described
+        // by the line it was written with.
+        if (session.exercises.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                StatBlock("${session.exercises.size}", "exercises")
+                StatBlock("${session.plannedSets}", "sets")
+                if (session.volumeKg > 0f) {
+                    StatBlock(formatTonnes(session.volumeKg), "planned volume")
+                }
+            }
+        } else if (session.note.isNotBlank()) {
+            Text(session.note, color = TextSecondary, style = inter(12f, lineHeight = 1.4f))
         }
         AccentAction(
-            "Start session",
+            if (session.done) "Open summary" else "Start session",
             icon = Icons.Filled.PlayArrow,
             verticalPadding = 10.dp,
             modifier = Modifier.fillMaxWidth(),
@@ -207,23 +282,32 @@ private fun Tile(
 }
 
 @Composable
-private fun WeekRingCard(onSeeWeek: () -> Unit) {
+private fun WeekRingCard(
+    banked: Int,
+    planned: Int,
+    next: PlannedSession?,
+    onSeeWeek: () -> Unit,
+) {
     Panel {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            SegmentRing(size = 74.dp, done = SESSIONS_DONE, strokeWidth = 9f) {
-                Text("$SESSIONS_DONE/$SESSIONS_PLANNED", color = TextPrimary, style = oswald(17f))
+            SegmentRing(size = 74.dp, done = banked, strokeWidth = 9f) {
+                Text("$banked/$planned", color = TextPrimary, style = oswald(17f))
             }
             Column(Modifier.weight(1f)) {
                 Text(
-                    "Week 3 sessions",
+                    "This week's sessions",
                     color = TextPrimary,
                     style = inter(14f, FontWeight.W500, lineHeight = 1.3f),
                 )
                 Text(
-                    "Two strength, one run banked. Sled work and the long Z2 left.",
+                    when {
+                        planned == 0 -> "Nothing on the plan yet."
+                        next == null -> "The week is banked. Write the next one."
+                        else -> "$banked of $planned banked. Next up: ${next.name}."
+                    },
                     color = TextSecondary,
                     style = inter(11.5f, lineHeight = 1.5f),
                     modifier = Modifier.padding(top = 3.dp),

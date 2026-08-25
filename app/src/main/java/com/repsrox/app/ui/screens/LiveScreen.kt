@@ -63,8 +63,10 @@ import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
 
 @Composable
-fun LiveScreen(viewModel: RepsRoxViewModel) {
-    val exercise = EXERCISES[viewModel.currentExercise]
+fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewModel()) {
+    val exercises = viewModel.activeExercises
+    val exercise = exercises.getOrNull(viewModel.currentExercise) ?: return
+    val session = viewModel.activeSession
 
     Column(
         Modifier
@@ -84,9 +86,18 @@ fun LiveScreen(viewModel: RepsRoxViewModel) {
             RecordingPulse()
             Spacer(Modifier.weight(1f))
             Text(
-                "${viewModel.totalSetsDone}/$PLANNED_SETS sets",
+                "${viewModel.totalSetsDone}/${viewModel.plannedSets} sets",
                 color = TextMeta,
                 style = mono(11f),
+            )
+        }
+
+        if (session != null) {
+            Text(
+                session.name,
+                color = TextSecondary,
+                style = inter(12.5f, FontWeight.W500, lineHeight = 1.3f),
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
 
@@ -130,7 +141,7 @@ fun LiveScreen(viewModel: RepsRoxViewModel) {
 
         Column {
             SectionLabel("Up next", modifier = Modifier.padding(bottom = 6.dp))
-            EXERCISES.forEachIndexed { index, item ->
+            exercises.forEachIndexed { index, item ->
                 val isCurrent = index == viewModel.currentExercise
                 val complete = viewModel.setsDone[index] == item.sets.size
                 RuledRow(onClick = { viewModel.selectExercise(index) }) {
@@ -201,7 +212,8 @@ private fun RowScope.SetChip(reps: Int, kg: String, banked: Boolean, onClick: ()
     ) {
         Text("$reps", color = if (banked) Accent else TextPrimary, style = oswald(15f))
         Text(
-            "$kg kg",
+            // Bodyweight work carries no load, so the chip says reps and nothing else.
+            if (kg.isBlank()) "reps" else "$kg kg",
             color = if (banked) Accent else TextPrimary,
             style = inter(9.5f, lineHeight = 1f, tracking = 0.04f),
         )

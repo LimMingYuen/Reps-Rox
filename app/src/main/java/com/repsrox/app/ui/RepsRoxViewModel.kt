@@ -10,11 +10,13 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.repsrox.app.data.EXERCISES
+import com.repsrox.app.data.Exercise
 import com.repsrox.app.data.LEGS
 import com.repsrox.app.data.LIVE_ELAPSED
 import com.repsrox.app.data.LIVE_SESSION
 import com.repsrox.app.data.LoggedExercise
 import com.repsrox.app.data.MEALS
+import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.RUN_SECONDS_PER_KM
 import com.repsrox.app.data.Session
 import com.repsrox.app.data.SessionRepository
@@ -40,7 +42,22 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
     var screen by mutableStateOf(Screen.Today)
         private set
 
-    /** Sets banked per exercise, indexed alongside [EXERCISES]. */
+    /**
+     * The session being tracked, once one has been opened off the plan. Null until
+     * then, which is when the screens fall back to the design's own content.
+     */
+    var activeSession by mutableStateOf<PlannedSession?>(null)
+        private set
+
+    /** The week being looked at, shared by the week screen and the plan shelf. */
+    var weekStart by mutableStateOf(LocalDate.now().weekStart())
+        private set
+
+    /** The day a new session is opened against — whichever one was tapped. */
+    var buildDate by mutableStateOf(LocalDate.now())
+        private set
+
+    /** Sets banked per exercise, indexed alongside [activeExercises]. */
     val setsDone = mutableStateListOf(2, 0, 0, 0, 0)
 
     var currentExercise by mutableIntStateOf(0)
@@ -84,6 +101,16 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     // ── Derived ─────────────────────────────────────────────────────────────
+
+    /**
+     * What the live tracker works through. A session with no exercises of its own
+     * — a run, or one of the design's own week rows — falls back to the design's
+     * session rather than opening a tracker with nothing in it.
+     */
+    val activeExercises: List<Exercise>
+        get() = activeSession?.exercises?.takeIf { it.isNotEmpty() } ?: EXERCISES
+
+    val plannedSets: Int get() = activeExercises.sumOf { it.sets.size }
 
     val totalSetsDone: Int get() = setsDone.sum()
 

@@ -44,9 +44,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.repsrox.app.ui.components.Mark
 import com.repsrox.app.ui.screens.BodyScreen
+import com.repsrox.app.ui.screens.BuildSessionScreen
 import com.repsrox.app.ui.screens.FuelScreen
 import com.repsrox.app.ui.screens.LiveScreen
+import com.repsrox.app.data.weekStart
 import com.repsrox.app.ui.screens.PlanScreen
+import com.repsrox.app.ui.screens.PlansScreen
 import com.repsrox.app.ui.screens.ProfileScreen
 import com.repsrox.app.ui.screens.RaceScreen
 import com.repsrox.app.ui.screens.RunScreen
@@ -64,7 +67,10 @@ import com.repsrox.app.ui.theme.oswald
 import kotlinx.coroutines.delay
 
 @Composable
-fun RepsRoxApp(viewModel: RepsRoxViewModel = viewModel()) {
+fun RepsRoxApp(
+    viewModel: RepsRoxViewModel = viewModel(),
+    planViewModel: PlanViewModel = viewModel(),
+) {
     // The rest clock and the two running timers all advance off one ticker.
     LaunchedEffect(Unit) {
         while (true) {
@@ -92,6 +98,17 @@ fun RepsRoxApp(viewModel: RepsRoxViewModel = viewModel()) {
                 when (viewModel.screen) {
                     Screen.Today -> TodayScreen(viewModel)
                     Screen.Plan -> PlanScreen(viewModel)
+                    Screen.Plans -> PlansScreen(viewModel)
+                    Screen.Build -> BuildSessionScreen(
+                        date = viewModel.buildDate,
+                        onSave = { session ->
+                            planViewModel.save(session)
+                            // Show the week the session landed in, not the one you left.
+                            viewModel.goToWeek(session.date.weekStart())
+                            viewModel.go(Screen.Plan)
+                        },
+                        onCancel = { viewModel.go(Screen.Plan) },
+                    )
                     Screen.Live -> LiveScreen(viewModel)
                     Screen.Run -> RunScreen(viewModel)
                     Screen.Race -> RaceScreen(viewModel)

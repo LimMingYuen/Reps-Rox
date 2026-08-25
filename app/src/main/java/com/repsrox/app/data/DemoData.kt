@@ -1,5 +1,7 @@
 package com.repsrox.app.data
 
+import java.time.DayOfWeek
+
 /**
  * Fixed sample content, transcribed from the "Reps and Rox App" design. This is
  * the shell's stand-in for a real store — every screen reads from here so the
@@ -45,8 +47,6 @@ val EXERCISES = listOf(
  */
 const val LIVE_ELAPSED = 1877
 
-const val PLANNED_SETS = 18
-
 // ── Race simulation ─────────────────────────────────────────────────────────
 
 data class Leg(val tag: String, val name: String, val target: String) {
@@ -88,13 +88,15 @@ const val RACE_PROJECTED = "1:22:40"
 
 // ── Week plan ───────────────────────────────────────────────────────────────
 
-enum class SessionKind { STRENGTH, RUN, RACE, REST }
-
-enum class DayStatus { DONE, TODAY, PLANNED, REST }
-
-data class PlannedDay(
-    val day: String,
-    val date: String,
+/**
+ * One row of the design's week, held against a weekday rather than a date so
+ * [PlanRepository] can lay the whole week onto whichever week the app is opened
+ * in. Whether a session is done is not carried: the seed reads as done for the
+ * days already behind you, which is the only honest answer for content nobody
+ * actually trained.
+ */
+data class SeedSession(
+    val dayOfWeek: DayOfWeek,
     val name: String,
     val meta: String,
     val status: DayStatus,
@@ -115,9 +117,6 @@ val WEEK = listOf(
 val LIVE_SESSION = WEEK.first { it.status == DayStatus.TODAY }
 
 // ── Today ───────────────────────────────────────────────────────────────────
-
-const val SESSIONS_DONE = 3
-const val SESSIONS_PLANNED = 5
 
 // ── Run ─────────────────────────────────────────────────────────────────────
 
