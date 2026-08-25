@@ -10,7 +10,13 @@ import java.time.DayOfWeek
 
 // ── Strength session ────────────────────────────────────────────────────────
 
-/** The design's own session, now what [PlanRepository] seeds today's slot with. */
+/** What a set's first figure counts. Metres are a distance, so they bank no volume. */
+enum class SetUnit { REPS, METRES }
+
+data class WorkSet(val reps: Int, val kg: String, val unit: SetUnit = SetUnit.REPS)
+
+data class Exercise(val name: String, val target: String, val sets: List<WorkSet>)
+
 val EXERCISES = listOf(
     Exercise(
         "Back squat", "5 × 5 · 120 kg",
@@ -26,7 +32,7 @@ val EXERCISES = listOf(
     ),
     Exercise(
         "Sled push", "4 × 25 m · 150 kg",
-        List(4) { WorkSet(25, "150") },
+        List(4) { WorkSet(25, "150", SetUnit.METRES) },
     ),
     Exercise(
         "Wall balls", "2 × 50 · 9 kg",
@@ -34,7 +40,11 @@ val EXERCISES = listOf(
     ),
 )
 
-/** The design's fixed elapsed clock for the live session, in seconds. */
+/**
+ * Where the live session clock starts, in seconds. The design opens the app
+ * part-way through a session rather than at zero, and a session started after
+ * one is banked begins at nothing.
+ */
 const val LIVE_ELAPSED = 1877
 
 // ── Race simulation ─────────────────────────────────────────────────────────
@@ -88,21 +98,25 @@ const val RACE_PROJECTED = "1:22:40"
 data class SeedSession(
     val dayOfWeek: DayOfWeek,
     val name: String,
-    val note: String,
+    val meta: String,
+    val status: DayStatus,
     val kind: SessionKind,
-    val exercises: List<Exercise> = emptyList(),
 )
 
-/** The design's week, in its own order, laid across a Monday-to-Sunday week. */
-val WEEK_TEMPLATE = listOf(
-    SeedSession(DayOfWeek.MONDAY, "Upper pull + carries", "51:04 · 3.8 t", SessionKind.STRENGTH),
-    SeedSession(DayOfWeek.TUESDAY, "Rest", "Walk 6 km", SessionKind.REST),
-    SeedSession(DayOfWeek.WEDNESDAY, "Compromised running", "4 × (1 km + 20 wall balls)", SessionKind.RUN),
-    SeedSession(DayOfWeek.THURSDAY, "8 km Zone 2", "42:18", SessionKind.RUN),
-    SeedSession(DayOfWeek.FRIDAY, "Lower push + sled finisher", "", SessionKind.STRENGTH, EXERCISES),
-    SeedSession(DayOfWeek.SATURDAY, "Long Z2 · 14 km", "75 min", SessionKind.RUN),
-    SeedSession(DayOfWeek.SUNDAY, "Full race sim", "8 stations", SessionKind.RACE),
+val WEEK = listOf(
+    PlannedDay("MON", "11", "Upper pull + carries", "Done · 51:04 · 3.8 t", DayStatus.DONE, SessionKind.STRENGTH),
+    PlannedDay("TUE", "12", "Rest", "Walk 6 km", DayStatus.REST, SessionKind.REST),
+    PlannedDay("WED", "13", "Compromised running", "Done · 4 × (1 km + 20 wall balls)", DayStatus.DONE, SessionKind.RUN),
+    PlannedDay("THU", "14", "8 km Zone 2", "Done · 42:18", DayStatus.DONE, SessionKind.RUN),
+    PlannedDay("SAT", "15", "Lower push + sled finisher", "Today · 5 exercises · 18 sets", DayStatus.TODAY, SessionKind.STRENGTH),
+    PlannedDay("SUN", "16", "Long Z2 · 14 km", "Planned · 75 min", DayStatus.PLANNED, SessionKind.RUN),
+    PlannedDay("MON", "17", "Full race sim", "Planned · 8 stations", DayStatus.PLANNED, SessionKind.RACE),
 )
+
+/** The session the live screen logs — today's row in the week. */
+val LIVE_SESSION = WEEK.first { it.status == DayStatus.TODAY }
+
+// ── Today ───────────────────────────────────────────────────────────────────
 
 // ── Run ─────────────────────────────────────────────────────────────────────
 

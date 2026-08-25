@@ -1,28 +1,43 @@
 package com.repsrox.app.ui
 
+import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.repsrox.app.data.EXERCISES
 import com.repsrox.app.data.Exercise
 import com.repsrox.app.data.LEGS
+import com.repsrox.app.data.LIVE_ELAPSED
+import com.repsrox.app.data.LIVE_SESSION
+import com.repsrox.app.data.LoggedExercise
 import com.repsrox.app.data.MEALS
 import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.RUN_SECONDS_PER_KM
-import com.repsrox.app.data.SessionKind
-import com.repsrox.app.data.weekStart
-import java.time.LocalDate
+import com.repsrox.app.data.Session
+import com.repsrox.app.data.SessionRepository
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.time.Instant
 import java.util.Locale
 
 /**
  * Everything the design's script block kept in component state. Initial values
  * are the design's, so the app opens mid-week with a session part-logged.
+ *
+ * The strength session is the one thing here that outlives the process: finishing
+ * it writes it to [SessionRepository] and the summary reads it back. The run,
+ * the race and the fuel check-ins are still the design's fixed sample content.
  */
-class RepsRoxViewModel : ViewModel() {
+class RepsRoxViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val sessions = SessionRepository(application)
 
     var screen by mutableStateOf(Screen.Today)
         private set
@@ -51,6 +66,14 @@ class RepsRoxViewModel : ViewModel() {
     var restSeconds by mutableIntStateOf(96)
         private set
 
+    /** The live session's own clock. Seeded mid-session, as the design opens. */
+    var sessionSeconds by mutableIntStateOf(LIVE_ELAPSED)
+        private set
+
+    /** False once the session has been banked, until the next one is started. */
+    var sessionLive by mutableStateOf(true)
+        private set
+
     var runSeconds by mutableIntStateOf(2498)
         private set
 
@@ -68,6 +91,14 @@ class RepsRoxViewModel : ViewModel() {
 
     /** Keys of the meals checked off today. */
     val mealsLogged = listOf("b", "l").toMutableStateList()
+
+    /** Which banked session the summary shows. Null means the newest one. */
+    var viewedSession by mutableStateOf<Instant?>(null)
+        private set
+
+    /** Null until the first read off disk lands, so the summary does not flash its empty state. */
+    val bankedSessions: StateFlow<List<Session>?> = sessions.sessions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     // ── Derived ─────────────────────────────────────────────────────────────
 
@@ -93,42 +124,27 @@ class RepsRoxViewModel : ViewModel() {
     val runKilometres: String
         get() = String.format(Locale.US, "%.2f", runSeconds / RUN_SECONDS_PER_KM)
 
+    /** The exercises as actually worked, which is what gets banked. */
+    private val bankedExercises: List<LoggedExercise>
+        get() = EXERCISES.mapIndexedNotNull { index, exercise ->
+            val done = setsDone[index]
+            if (done == 0) null else LoggedExercise(exercise.name, exercise.sets.take(done))
+        }
+
     // ── Intents ─────────────────────────────────────────────────────────────
 
     fun go(destination: Screen) {
+        // Walking back into the live screen after banking one starts the next.
+        if (destination == Screen.Live && !sessionLive) startSession()
+        // Every route into the summary but picking a session shows the newest.
+        if (destination == Screen.Summary) viewedSession = null
         screen = destination
     }
 
-    fun goToWeek(start: LocalDate) {
-        weekStart = start
-    }
-
-    /** Opens the builder against [date], so a session lands on the day it was added from. */
-    fun goBuild(date: LocalDate) {
-        buildDate = date
-        screen = Screen.Build
-    }
-
-    /**
-     * Opens a session off the plan: what has been done opens its summary, what is
-     * still ahead opens the tracker it needs. Reopening the session already being
-     * tracked keeps whatever has been banked into it; a different one starts clean.
-     */
-    fun open(session: PlannedSession) {
-        if (session.id != activeSession?.id) {
-            activeSession = session
-            val exercises = session.exercises.takeIf { it.isNotEmpty() } ?: EXERCISES
-            setsDone.clear()
-            setsDone.addAll(List(exercises.size) { 0 })
-            currentExercise = 0
-            restSeconds = 0
-        }
-        screen = when {
-            session.done -> Screen.Summary
-            session.kind == SessionKind.RUN -> Screen.Run
-            session.kind == SessionKind.RACE -> Screen.Race
-            else -> Screen.Live
-        }
+    /** Opens one particular banked session, rather than whichever is newest. */
+    fun openSession(session: Session) {
+        viewedSession = session.finishedAt
+        screen = Screen.Summary
     }
 
     fun back(): Boolean {
@@ -154,6 +170,34 @@ class RepsRoxViewModel : ViewModel() {
         restSeconds = 0
     }
 
+    /**
+     * Writes the session to disk and opens its summary. A session with nothing
+     * banked in it is worth no record, so it just ends.
+     */
+    fun finishSession() {
+        val worked = bankedExercises
+        if (worked.isNotEmpty()) {
+            val session = Session(
+                finishedAt = Instant.now(),
+                name = LIVE_SESSION.name,
+                seconds = sessionSeconds,
+                exercises = worked,
+            )
+            viewModelScope.launch { sessions.bank(session) }
+        }
+        sessionLive = false
+        go(Screen.Summary)
+    }
+
+    /** Clears the board for the next session. The clock starts at zero, not mid-session. */
+    private fun startSession() {
+        setsDone.indices.forEach { setsDone[it] = 0 }
+        currentExercise = 0
+        restSeconds = 0
+        sessionSeconds = 0
+        sessionLive = true
+    }
+
     fun toggleRun() {
         runOn = !runOn
     }
@@ -172,9 +216,10 @@ class RepsRoxViewModel : ViewModel() {
 
     fun isMealLogged(key: String) = key in mealsLogged
 
-    /** One second of wall clock: rest counts down, the two timers count up. */
+    /** One second of wall clock: rest counts down, the timers count up. */
     fun tick() {
         if (restSeconds > 0) restSeconds--
+        if (sessionLive) sessionSeconds++
         if (runOn) runSeconds++
         if (raceOn) raceSeconds++
     }

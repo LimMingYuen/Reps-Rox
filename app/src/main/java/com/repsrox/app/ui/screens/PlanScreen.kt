@@ -19,10 +19,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -33,10 +29,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.repsrox.app.data.DayStatus
 import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.SessionKind
-import com.repsrox.app.data.plural
-import com.repsrox.app.data.weekDates
-import com.repsrox.app.data.weekStart
-import com.repsrox.app.ui.PlanViewModel
+import com.repsrox.app.data.WEEK
+import com.repsrox.app.data.day
+import com.repsrox.app.data.formatVolume
+import com.repsrox.app.data.totalSets
+import com.repsrox.app.data.volumeKg
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.Screen
 import com.repsrox.app.ui.components.AccentAction
@@ -44,6 +41,7 @@ import com.repsrox.app.ui.components.Panel
 import com.repsrox.app.ui.components.QuietAction
 import com.repsrox.app.ui.components.VerticalRule
 import com.repsrox.app.ui.components.icon
+import com.repsrox.app.ui.formatMinutes
 import com.repsrox.app.ui.theme.Accent
 import com.repsrox.app.ui.theme.TextDim
 import com.repsrox.app.ui.theme.TextMeta
@@ -54,16 +52,13 @@ import com.repsrox.app.ui.theme.inter
 import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
-import java.util.Locale
-import java.time.format.TextStyle as DateTextStyle
 
 @Composable
-fun PlanScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewModel()) {
-    val sessions by planViewModel.sessions.collectAsState()
-    val today = remember { LocalDate.now() }
-    val weekStart = viewModel.weekStart
-    var saving by remember { mutableStateOf(false) }
+fun PlanScreen(viewModel: RepsRoxViewModel) {
+    val banked = viewModel.bankedSessions.collectAsState().value
+    // Recomputed on every pass rather than remembered, so the day it compares
+    // against is still right after the app has been open across midnight.
+    val todaysSession = banked?.firstOrNull { it.day() == LocalDate.now() }
 
     Column(
         Modifier
@@ -168,50 +163,42 @@ private fun WeekHeader(
     }
 }
 
-/** The week's own name where it has one, and the Monday it runs from otherwise. */
-private fun LocalDate.weekLabel(today: LocalDate): String = when (this) {
-    today.weekStart() -> "This week"
-    today.weekStart().plusWeeks(1) -> "Next week"
-    today.weekStart().minusWeeks(1) -> "Last week"
-    else -> "$dayOfMonth ${month.getDisplayName(DateTextStyle.SHORT, Locale.US)}"
-}
-
-@Composable
-private fun Step(icon: ImageVector, description: String, onClick: () -> Unit) {
-    Icon(
-        icon,
-        contentDescription = description,
-        tint = TextSubtle,
-        modifier = Modifier
-            .size(34.dp)
-            .clickable(onClick = onClick)
-            .padding(6.dp),
-    )
-}
-
-@Composable
-private fun EmptyWeek() {
-    Panel {
-        Text("Nothing planned.", color = TextPrimary, style = oswald(20f, FontWeight.W500))
-        Text(
-            "Add sessions one at a time, or lay a saved plan down over this week " +
-                "and the weeks after it.",
-            color = TextSubtle,
-            style = inter(11.5f, lineHeight = 1.5f),
-            modifier = Modifier.padding(top = 8.dp),
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            WEEK.forEach { day ->
+                // Today is the only row the log can speak to: the week itself is
+                // still fixed sample content, with no real dates to match against.
+                val session = if (day.status == DayStatus.TODAY) todaysSession else null
+                DayRow(
+                    day = day,
+                    status = if (session != null) DayStatus.DONE else day.status,
+                    meta = session?.let {
+                        "Done · ${formatMinutes(it.seconds)} · " +
+                            "${formatVolume(it.volumeKg)} · ${it.totalSets} sets"
+                    } ?: day.meta,
+                    onClick = when {
+                        session != null -> ({ viewModel.openSession(session) })
+                        // Nothing in the log stands behind these, so there is no
+                        // summary to open — a rest day has never been tappable either.
+                        day.status == DayStatus.DONE || day.status == DayStatus.REST -> null
+                        else -> ({ viewModel.go(day.destination()) })
+                    },
+                )
+            }
+        }
     }
 }
 
+/**
+ * [status] and [meta] are passed in rather than read off [day], because a day the
+ * log has a session for reads as done on that session's real figures.
+ */
 @Composable
-private fun SessionRow(
-    session: PlannedSession,
-    today: LocalDate,
-    onOpen: () -> Unit,
-    onDelete: () -> Unit,
+private fun DayRow(
+    day: PlannedDay,
+    status: DayStatus,
+    meta: String,
+    onClick: (() -> Unit)?,
 ) {
-    val status = session.status(today)
-
     // Completed and rest days recede; today and what's still ahead stay at full ink.
     val dayColor = when (status) {
         DayStatus.DONE -> TextMuted
@@ -225,8 +212,8 @@ private fun SessionRow(
     }
 
     Panel(
-        onClick = if (status == DayStatus.REST) null else onOpen,
-        contentPadding = PaddingValues(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+        onClick = onClick,
+        contentPadding = PaddingValues(12.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -254,14 +241,14 @@ private fun SessionRow(
                     style = inter(13f, FontWeight.W500, lineHeight = 1.3f),
                 )
                 Text(
-                    session.meta(today),
+                    meta,
                     color = TextMeta,
                     style = inter(10.5f),
                     modifier = Modifier.padding(top = 2.dp),
                 )
             }
             Icon(
-                status.icon(session.kind),
+                status.icon(day.kind),
                 contentDescription = null,
                 tint = iconColor,
                 modifier = Modifier.size(16.dp),
@@ -282,4 +269,16 @@ private fun SessionRow(
             }
         }
     }
+}
+
+/**
+ * The design reaches the run and race screens from its canvas tab strip, which a
+ * real app doesn't have — so the week is where a session is opened from, each row
+ * going to the tracker its kind needs. Rows already banked open their summary
+ * instead, which [PlanScreen] handles because only it knows the log.
+ */
+private fun PlannedDay.destination(): Screen = when (kind) {
+    SessionKind.RUN -> Screen.Run
+    SessionKind.RACE -> Screen.Race
+    else -> Screen.Live
 }

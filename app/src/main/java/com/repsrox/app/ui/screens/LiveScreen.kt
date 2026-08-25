@@ -33,11 +33,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.repsrox.app.data.LIVE_ELAPSED
-import com.repsrox.app.ui.PlanViewModel
+import com.repsrox.app.data.EXERCISES
+import com.repsrox.app.data.PLANNED_SETS
 import com.repsrox.app.ui.RepsRoxViewModel
-import com.repsrox.app.ui.Screen
 import com.repsrox.app.ui.components.Panel
 import com.repsrox.app.ui.components.QuietAction
 import com.repsrox.app.ui.components.RuledRow
@@ -81,7 +79,7 @@ fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                formatMinutes(LIVE_ELAPSED),
+                formatMinutes(viewModel.sessionSeconds),
                 color = TextPrimary,
                 style = oswald(30f, tracking = 0.02f),
             )
@@ -175,12 +173,7 @@ fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
         QuietAction(
             "Finish session",
             modifier = Modifier.fillMaxWidth(),
-            // Finishing is what marks the session off the plan, so the week stops
-            // asking for it and the ring on Today moves.
-            onClick = {
-                session?.let { planViewModel.markDone(it.id) }
-                viewModel.go(Screen.Summary)
-            },
+            onClick = viewModel::finishSession,
         )
     }
 }
