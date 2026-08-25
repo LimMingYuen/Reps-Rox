@@ -8,7 +8,10 @@ package com.repsrox.app.data
 
 // ── Strength session ────────────────────────────────────────────────────────
 
-data class WorkSet(val reps: Int, val kg: String)
+/** What a set's first figure counts. Metres are a distance, so they bank no volume. */
+enum class SetUnit { REPS, METRES }
+
+data class WorkSet(val reps: Int, val kg: String, val unit: SetUnit = SetUnit.REPS)
 
 data class Exercise(val name: String, val target: String, val sets: List<WorkSet>)
 
@@ -27,7 +30,7 @@ val EXERCISES = listOf(
     ),
     Exercise(
         "Sled push", "4 × 25 m · 150 kg",
-        List(4) { WorkSet(25, "150") },
+        List(4) { WorkSet(25, "150", SetUnit.METRES) },
     ),
     Exercise(
         "Wall balls", "2 × 50 · 9 kg",
@@ -35,7 +38,11 @@ val EXERCISES = listOf(
     ),
 )
 
-/** The design's fixed elapsed clock for the live session, in seconds. */
+/**
+ * Where the live session clock starts, in seconds. The design opens the app
+ * part-way through a session rather than at zero, and a session started after
+ * one is banked begins at nothing.
+ */
 const val LIVE_ELAPSED = 1877
 
 const val PLANNED_SETS = 18
@@ -104,20 +111,10 @@ val WEEK = listOf(
     PlannedDay("MON", "17", "Full race sim", "Planned · 8 stations", DayStatus.PLANNED, SessionKind.RACE),
 )
 
+/** The session the live screen logs — today's row in the week. */
+val LIVE_SESSION = WEEK.first { it.status == DayStatus.TODAY }
+
 // ── Today ───────────────────────────────────────────────────────────────────
-
-data class RecentSession(
-    val kind: SessionKind,
-    val name: String,
-    val meta: String,
-    val whenLabel: String,
-)
-
-val RECENT = listOf(
-    RecentSession(SessionKind.RUN, "8 km Zone 2", "42:18 · 5:17 /km · 148 bpm", "Thu"),
-    RecentSession(SessionKind.STRENGTH, "Upper pull + carries", "51:04 · 3.8 t · 16 sets", "Wed"),
-    RecentSession(SessionKind.RACE, "Half-race sim", "38:52 · 4 stations", "Sun"),
-)
 
 const val SESSIONS_DONE = 3
 const val SESSIONS_PLANNED = 5
@@ -176,18 +173,6 @@ val MEALS = listOf(
  */
 val WEIGHT_SERIES = listOf(
     84.2f, 84.0f, 83.5f, 83.6f, 83.1f, 82.8f, 82.9f, 82.4f, 82.1f, 81.9f, 81.6f, 81.4f,
-)
-
-// ── Summary ─────────────────────────────────────────────────────────────────
-
-data class SummaryRow(val name: String, val detail: String)
-
-val SUMMARY_ROWS = listOf(
-    SummaryRow("Back squat", "5 / 5 / 5 / 5 / 5 · 120 kg"),
-    SummaryRow("Romanian deadlift", "8 / 8 / 8 / 8 · 100 kg"),
-    SummaryRow("Bulgarian split squat", "10 / 10 / 10 · 24 kg"),
-    SummaryRow("Sled push", "4 × 25 m · 150 kg"),
-    SummaryRow("Wall balls", "50 / 50 · 9 kg"),
 )
 
 // ── Profile ─────────────────────────────────────────────────────────────────

@@ -34,10 +34,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.repsrox.app.data.EXERCISES
-import com.repsrox.app.data.LIVE_ELAPSED
 import com.repsrox.app.data.PLANNED_SETS
 import com.repsrox.app.ui.RepsRoxViewModel
-import com.repsrox.app.ui.Screen
 import com.repsrox.app.ui.components.Panel
 import com.repsrox.app.ui.components.QuietAction
 import com.repsrox.app.ui.components.RuledRow
@@ -79,7 +77,7 @@ fun LiveScreen(viewModel: RepsRoxViewModel) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                formatMinutes(LIVE_ELAPSED),
+                formatMinutes(viewModel.sessionSeconds),
                 color = TextPrimary,
                 style = oswald(30f, tracking = 0.02f),
             )
@@ -164,7 +162,7 @@ fun LiveScreen(viewModel: RepsRoxViewModel) {
         QuietAction(
             "Finish session",
             modifier = Modifier.fillMaxWidth(),
-            onClick = { viewModel.go(Screen.Summary) },
+            onClick = viewModel::finishSession,
         )
     }
 }

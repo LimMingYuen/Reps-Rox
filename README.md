@@ -50,7 +50,7 @@ RepsRox/
 │       ├── main/
 │       │   ├── java/com/repsrox/app/
 │       │   │   ├── MainActivity.kt
-│       │   │   ├── data/DemoData.kt        # Sample content, stands in for a store
+│       │   │   ├── data/                     # Models, repositories, and DemoData.kt
 │       │   │   └── ui/
 │       │   │       ├── RepsRoxApp.kt       # Top bar, screen switch, bottom nav
 │       │   │       ├── RepsRoxViewModel.kt # Session/timer state + clock formatting
@@ -76,7 +76,8 @@ RepsRox/
 groups — Train covers the week, live session, run and summary; You covers profile
 and body — and Back walks out to the group's root.
 
-All content is fixed sample data; nothing is persisted yet.
+Weigh-ins and finished strength sessions are kept on disk (DataStore); the run,
+the race sim, the week and the fuel check-ins are still fixed sample data.
 
 ## Running on a Device/Emulator
 

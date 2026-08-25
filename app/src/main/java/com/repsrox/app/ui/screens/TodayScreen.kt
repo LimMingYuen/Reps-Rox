@@ -26,12 +26,16 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.repsrox.app.data.RECENT
 import com.repsrox.app.data.SESSIONS_DONE
 import com.repsrox.app.data.SESSIONS_PLANNED
+import com.repsrox.app.data.SessionKind
+import com.repsrox.app.data.dayLabel
 import com.repsrox.app.data.formatKilos
 import com.repsrox.app.data.formatSigned
+import com.repsrox.app.data.formatVolume
 import com.repsrox.app.data.summarise
+import com.repsrox.app.data.totalSets
+import com.repsrox.app.data.volumeKg
 import com.repsrox.app.ui.BodyViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.Screen
@@ -43,6 +47,7 @@ import com.repsrox.app.ui.components.SectionLabel
 import com.repsrox.app.ui.components.SegmentRing
 import com.repsrox.app.ui.components.StatBlock
 import com.repsrox.app.ui.components.icon
+import com.repsrox.app.ui.formatMinutes
 import com.repsrox.app.ui.theme.Accent
 import com.repsrox.app.ui.theme.TextFaint
 import com.repsrox.app.ui.theme.TextMeta
@@ -115,23 +120,38 @@ fun TodayScreen(viewModel: RepsRoxViewModel, bodyViewModel: BodyViewModel = view
 
         Column(Modifier.padding(top = 2.dp)) {
             SectionLabel("Last sessions", modifier = Modifier.padding(bottom = 9.dp))
-            RECENT.forEach { session ->
-                RuledRow(onClick = { viewModel.go(Screen.Summary) }) {
-                    Icon(
-                        session.kind.icon(),
-                        contentDescription = null,
-                        tint = Accent,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            session.name,
-                            color = TextPrimary,
-                            style = inter(12.5f, FontWeight.W500, lineHeight = 1.3f),
+            val banked = viewModel.bankedSessions.collectAsState().value
+            when {
+                banked == null -> Unit
+                banked.isEmpty() -> Text(
+                    "Nothing banked yet. Finish a session and it lands here.",
+                    color = TextMeta,
+                    style = inter(11.5f, lineHeight = 1.5f),
+                )
+                // Only strength sessions are banked, so they all read as one kind.
+                else -> banked.take(3).forEach { session ->
+                    RuledRow(onClick = { viewModel.openSession(session) }) {
+                        Icon(
+                            SessionKind.STRENGTH.icon(),
+                            contentDescription = null,
+                            tint = Accent,
+                            modifier = Modifier.size(16.dp),
                         )
-                        Text(session.meta, color = TextMeta, style = inter(10.5f))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                session.name,
+                                color = TextPrimary,
+                                style = inter(12.5f, FontWeight.W500, lineHeight = 1.3f),
+                            )
+                            Text(
+                                "${formatMinutes(session.seconds)} · " +
+                                    "${formatVolume(session.volumeKg)} · ${session.totalSets} sets",
+                                color = TextMeta,
+                                style = inter(10.5f),
+                            )
+                        }
+                        Text(session.dayLabel(), color = TextFaint, style = mono(11f))
                     }
-                    Text(session.whenLabel, color = TextFaint, style = mono(11f))
                 }
             }
         }
