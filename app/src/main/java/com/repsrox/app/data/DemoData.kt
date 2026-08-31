@@ -10,36 +10,6 @@ import java.time.DayOfWeek
 
 // ── Strength session ────────────────────────────────────────────────────────
 
-/** What a set's first figure counts. Metres are a distance, so they bank no volume. */
-enum class SetUnit { REPS, METRES }
-
-data class WorkSet(val reps: Int, val kg: String, val unit: SetUnit = SetUnit.REPS)
-
-data class Exercise(val name: String, val target: String, val sets: List<WorkSet>)
-
-val EXERCISES = listOf(
-    Exercise(
-        "Back squat", "5 × 5 · 120 kg",
-        List(5) { WorkSet(5, "120") },
-    ),
-    Exercise(
-        "Romanian deadlift", "4 × 8 · 100 kg",
-        List(4) { WorkSet(8, "100") },
-    ),
-    Exercise(
-        "Bulgarian split squat", "3 × 10 · 24 kg",
-        List(3) { WorkSet(10, "24") },
-    ),
-    Exercise(
-        "Sled push", "4 × 25 m · 150 kg",
-        List(4) { WorkSet(25, "150", SetUnit.METRES) },
-    ),
-    Exercise(
-        "Wall balls", "2 × 50 · 9 kg",
-        List(2) { WorkSet(50, "9") },
-    ),
-)
-
 /**
  * Where the live session clock starts, in seconds. The design opens the app
  * part-way through a session rather than at zero, and a session started after
@@ -89,32 +59,36 @@ const val RACE_PROJECTED = "1:22:40"
 // ── Week plan ───────────────────────────────────────────────────────────────
 
 /**
- * One row of the design's week, held against a weekday rather than a date so
- * [PlanRepository] can lay the whole week onto whichever week the app is opened
- * in. Whether a session is done is not carried: the seed reads as done for the
- * days already behind you, which is the only honest answer for content nobody
- * actually trained.
+ * A first-run week, one session a day, held against a weekday rather than a date
+ * so [PlanRepository] can lay it onto whichever week the app is first opened in.
  */
-data class SeedSession(
-    val dayOfWeek: DayOfWeek,
-    val name: String,
-    val meta: String,
-    val status: DayStatus,
-    val kind: SessionKind,
+val WEEK_TEMPLATE = listOf(
+    TemplateSession(
+        DayOfWeek.MONDAY, "Upper pull + carries", SessionKind.STRENGTH,
+        exercises = listOf(
+            buildExercise("Barbell row", sets = 4, reps = 8, kg = 70f),
+            buildExercise("Lat pulldown", sets = 4, reps = 10, kg = 60f),
+            buildExercise("Farmers carry", sets = 4, reps = 40, kg = 32f, unit = SetUnit.METRES),
+            buildExercise("Dumbbell row", sets = 3, reps = 10, kg = 30f),
+            buildExercise("Face pull", sets = 3, reps = 15, kg = 20f),
+        ),
+    ),
+    TemplateSession(DayOfWeek.TUESDAY, "Rest", SessionKind.REST, note = "Walk 6 km"),
+    TemplateSession(DayOfWeek.WEDNESDAY, "Compromised running", SessionKind.RUN, note = "4 × (1 km + 20 wall balls)"),
+    TemplateSession(DayOfWeek.THURSDAY, "8 km Zone 2", SessionKind.RUN, note = "42:00"),
+    TemplateSession(DayOfWeek.FRIDAY, "Rest", SessionKind.REST, note = "Walk 6 km"),
+    TemplateSession(
+        DayOfWeek.SATURDAY, "Lower push + sled finisher", SessionKind.STRENGTH,
+        exercises = listOf(
+            buildExercise("Back squat", sets = 5, reps = 5, kg = 120f),
+            buildExercise("Romanian deadlift", sets = 4, reps = 8, kg = 100f),
+            buildExercise("Bulgarian split squat", sets = 3, reps = 10, kg = 24f),
+            buildExercise("Sled push", sets = 4, reps = 25, kg = 150f, unit = SetUnit.METRES),
+            buildExercise("Wall balls", sets = 2, reps = 50, kg = 9f),
+        ),
+    ),
+    TemplateSession(DayOfWeek.SUNDAY, "Long Z2", SessionKind.RUN, note = "75 min"),
 )
-
-val WEEK = listOf(
-    PlannedDay("MON", "11", "Upper pull + carries", "Done · 51:04 · 3.8 t", DayStatus.DONE, SessionKind.STRENGTH),
-    PlannedDay("TUE", "12", "Rest", "Walk 6 km", DayStatus.REST, SessionKind.REST),
-    PlannedDay("WED", "13", "Compromised running", "Done · 4 × (1 km + 20 wall balls)", DayStatus.DONE, SessionKind.RUN),
-    PlannedDay("THU", "14", "8 km Zone 2", "Done · 42:18", DayStatus.DONE, SessionKind.RUN),
-    PlannedDay("SAT", "15", "Lower push + sled finisher", "Today · 5 exercises · 18 sets", DayStatus.TODAY, SessionKind.STRENGTH),
-    PlannedDay("SUN", "16", "Long Z2 · 14 km", "Planned · 75 min", DayStatus.PLANNED, SessionKind.RUN),
-    PlannedDay("MON", "17", "Full race sim", "Planned · 8 stations", DayStatus.PLANNED, SessionKind.RACE),
-)
-
-/** The session the live screen logs — today's row in the week. */
-val LIVE_SESSION = WEEK.first { it.status == DayStatus.TODAY }
 
 // ── Today ───────────────────────────────────────────────────────────────────
 

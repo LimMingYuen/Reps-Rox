@@ -222,7 +222,7 @@ private fun Actions(
     }
 }
 
-private fun LocalDate.weekLabel(today: LocalDate): String = when (this) {
+internal fun LocalDate.weekLabel(today: LocalDate): String = when (this) {
     today.weekStart() -> "This week"
     today.weekStart().plusWeeks(1) -> "Next week"
     today.weekStart().minusWeeks(1) -> "Last week"

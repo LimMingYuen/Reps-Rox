@@ -101,6 +101,7 @@ fun RepsRoxApp(
                     Screen.Plans -> PlansScreen(viewModel)
                     Screen.Build -> BuildSessionScreen(
                         date = viewModel.buildDate,
+                        editing = viewModel.editingSession,
                         onSave = { session ->
                             planViewModel.save(session)
                             // Show the week the session landed in, not the one you left.

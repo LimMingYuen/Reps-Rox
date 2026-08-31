@@ -184,7 +184,7 @@ private fun LocalDate.stepperLabel(today: LocalDate): String = when (this) {
 }
 
 @Composable
-private fun Step(
+internal fun Step(
     icon: ImageVector,
     description: String,
     enabled: Boolean = true,

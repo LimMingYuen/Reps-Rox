@@ -94,7 +94,9 @@ internal fun encodeExercises(exercises: List<Exercise>): String =
 private fun encodeExercise(exercise: Exercise): String = listOf(
     exercise.name,
     exercise.target,
-    exercise.sets.joinToString(SET.toString()) { "${it.reps}$SET_FIELD${it.kg}" },
+    exercise.sets.joinToString(SET.toString()) { set ->
+        "${set.reps}$SET_FIELD${set.kg}" + if (set.unit == SetUnit.METRES) "${SET_FIELD}m" else ""
+    },
 ).joinToString(EXERCISE_FIELD.toString())
 
 /**
@@ -102,11 +104,11 @@ private fun encodeExercise(exercise: Exercise): String = listOf(
  * line — a session missing its date, kind or id is not a session.
  */
 internal fun decodePlan(raw: String): List<PlannedSession> = raw.lineSequence()
-    .mapNotNull(::decodeSession)
+    .mapNotNull(::decodePlannedSession)
     .sortedBy { it.date }
     .toList()
 
-private fun decodeSession(line: String): PlannedSession? {
+private fun decodePlannedSession(line: String): PlannedSession? {
     val fields = line.split(FIELD)
     if (fields.size < 7) return null
     val id = fields[0].takeIf { it.isNotBlank() } ?: return null
@@ -136,9 +138,10 @@ private fun decodeExercise(raw: String): Exercise? {
 
 private fun decodeSet(raw: String): WorkSet? {
     val fields = raw.split(SET_FIELD)
-    if (fields.size != 2) return null
+    if (fields.size < 2) return null
     val reps = fields[0].toIntOrNull() ?: return null
-    return WorkSet(reps, fields[1])
+    val unit = if (fields.getOrNull(2) == "m") SetUnit.METRES else SetUnit.REPS
+    return WorkSet(reps, fields[1], unit)
 }
 
 // ── Seed ────────────────────────────────────────────────────────────────────

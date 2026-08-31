@@ -3,6 +3,7 @@ package com.repsrox.app.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.repsrox.app.data.ParsedPlan
 import com.repsrox.app.data.PlanRepository
 import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.TemplateRepository
@@ -46,6 +47,16 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun markDone(id: String) {
         viewModelScope.launch { repository.setDone(id, done = true) }
+    }
+
+    /** Applies an imported document's exercises onto whichever of today's sessions they match by date. */
+    fun applyImport(parsed: ParsedPlan) {
+        viewModelScope.launch {
+            val current = repository.sessions.first()
+            repository.replaceAll(
+                current.map { session -> parsed.sessions[session.date]?.let { session.copy(exercises = it) } ?: session },
+            )
+        }
     }
 
     // ── Plans ───────────────────────────────────────────────────────────────

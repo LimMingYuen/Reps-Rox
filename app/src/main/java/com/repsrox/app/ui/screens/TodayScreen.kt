@@ -27,16 +27,18 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.repsrox.app.data.SESSIONS_DONE
-import com.repsrox.app.data.SESSIONS_PLANNED
+import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.SessionKind
 import com.repsrox.app.data.dayLabel
 import com.repsrox.app.data.formatKilos
 import com.repsrox.app.data.formatSigned
+import com.repsrox.app.data.formatTonnes
 import com.repsrox.app.data.formatVolume
 import com.repsrox.app.data.summarise
 import com.repsrox.app.data.totalSets
 import com.repsrox.app.data.volumeKg
+import com.repsrox.app.data.weekDates
+import com.repsrox.app.data.weekStart
 import com.repsrox.app.ui.BodyViewModel
 import com.repsrox.app.ui.PlanViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
@@ -110,7 +112,7 @@ fun TodayScreen(
         TodaySessionCard(
             session = todaySession,
             onStart = { todaySession?.let(viewModel::open) },
-            onPlan = { viewModel.go(Screen.Build) },
+            onPlan = { viewModel.goBuild(today) },
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

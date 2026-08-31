@@ -8,7 +8,7 @@ import java.util.Locale
 /**
  * One exercise as it was actually worked. Only the sets that were banked are
  * here, and they carry the figures they were logged at rather than a reference
- * back into [EXERCISES] — editing the plan later must not rewrite what you did.
+ * back into the plan it came from — editing the plan later must not rewrite what you did.
  */
 data class LoggedExercise(val name: String, val sets: List<WorkSet>)
 

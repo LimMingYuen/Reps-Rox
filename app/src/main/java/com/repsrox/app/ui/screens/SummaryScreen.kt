@@ -62,7 +62,9 @@ fun SummaryScreen(viewModel: RepsRoxViewModel) {
             // Still reading the log off disk — hold the screen blank for the one
             // frame it takes rather than flashing the empty state.
             sessions == null -> Unit
-            sessions!!.isEmpty() -> NothingBanked(onStart = { viewModel.go(Screen.Live) })
+            // There's no one fixed "the" session anymore to jump straight into —
+            // starting one means picking it off the week.
+            sessions!!.isEmpty() -> NothingBanked(onStart = { viewModel.go(Screen.Plan) })
             // A session picked from a list, or the newest when nothing was picked —
             // which is what finishing one leaves behind.
             else -> Banked(

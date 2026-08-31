@@ -33,8 +33,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.repsrox.app.data.EXERCISES
-import com.repsrox.app.data.PLANNED_SETS
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.components.Panel
 import com.repsrox.app.ui.components.QuietAction
@@ -63,7 +61,7 @@ import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
 
 @Composable
-fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewModel()) {
+fun LiveScreen(viewModel: RepsRoxViewModel) {
     val exercises = viewModel.activeExercises
     val exercise = exercises.getOrNull(viewModel.currentExercise) ?: return
     val session = viewModel.activeSession

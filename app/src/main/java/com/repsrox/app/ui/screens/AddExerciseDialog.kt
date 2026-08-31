@@ -25,9 +25,11 @@ import com.repsrox.app.data.LOAD_RANGE_KG
 import com.repsrox.app.data.NAME_MAX_CHARS
 import com.repsrox.app.data.REPS_RANGE
 import com.repsrox.app.data.SETS_RANGE
+import com.repsrox.app.data.SetUnit
 import com.repsrox.app.data.buildExercise
 import com.repsrox.app.data.sanitise
 import com.repsrox.app.ui.components.AccentAction
+import com.repsrox.app.ui.components.ChoiceChip
 import com.repsrox.app.ui.components.NumberField
 import com.repsrox.app.ui.components.Panel
 import com.repsrox.app.ui.components.PlainTextField
@@ -44,17 +46,23 @@ import com.repsrox.app.ui.theme.oswald
 /**
  * A movement and the work prescribed against it. Sets are laid out uniformly —
  * five of five at 120 kg — which is what a strength session is written as; a set
- * that runs heavy or light is changed on the day, in the live tracker.
+ * that runs heavy or light is changed on the day, in the live tracker. [initial]
+ * opens the dialog pre-filled to edit an exercise already on the board rather
+ * than add a new one; [onDelete] is offered only alongside one.
  */
 @Composable
 fun AddExerciseDialog(
+    initial: Exercise? = null,
     onDismiss: () -> Unit,
-    onAdd: (Exercise) -> Unit,
+    onSave: (Exercise) -> Unit,
+    onDelete: (() -> Unit)? = null,
 ) {
-    var name by remember { mutableStateOf("") }
-    var sets by remember { mutableStateOf("") }
-    var reps by remember { mutableStateOf("") }
-    var load by remember { mutableStateOf("") }
+    val initialSet = initial?.sets?.firstOrNull()
+    var name by remember { mutableStateOf(initial?.name.orEmpty()) }
+    var sets by remember { mutableStateOf(initial?.sets?.size?.toString().orEmpty()) }
+    var reps by remember { mutableStateOf(initialSet?.reps?.toString().orEmpty()) }
+    var load by remember { mutableStateOf(initialSet?.kg.orEmpty()) }
+    var unit by remember { mutableStateOf(initialSet?.unit ?: SetUnit.REPS) }
 
     val setCount = sets.toIntOrNull()
     val repCount = reps.toIntOrNull()
@@ -62,13 +70,13 @@ fun AddExerciseDialog(
     val kg = if (load.isBlank()) 0f else load.toDecimal()
 
     val cleanName = sanitise(name)
-    val canAdd = cleanName.isNotEmpty() &&
+    val canSave = cleanName.isNotEmpty() &&
         setCount in SETS_RANGE &&
         repCount in REPS_RANGE &&
         kg != null && kg in LOAD_RANGE_KG
 
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    LaunchedEffect(Unit) { if (initial == null) focus.requestFocus() }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -80,7 +88,7 @@ fun AddExerciseDialog(
                 .padding(horizontal = 20.dp),
             contentPadding = PaddingValues(16.dp),
         ) {
-            SectionLabel("Add exercise")
+            SectionLabel(if (initial == null) "Add exercise" else "Edit exercise")
 
             PlainTextField(
                 value = name,
@@ -98,8 +106,28 @@ fun AddExerciseDialog(
                     .padding(top = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                ChoiceChip(
+                    label = "Reps",
+                    selected = unit == SetUnit.REPS,
+                    modifier = Modifier.weight(1f),
+                    onClick = { unit = SetUnit.REPS },
+                )
+                ChoiceChip(
+                    label = "Metres",
+                    selected = unit == SetUnit.METRES,
+                    modifier = Modifier.weight(1f),
+                    onClick = { unit = SetUnit.METRES },
+                )
+            }
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Count("Sets", sets, { sets = it }, "5", Modifier.weight(1f))
-                Count("Reps", reps, { reps = it }, "5", Modifier.weight(1f))
+                Count(if (unit == SetUnit.METRES) "Metres" else "Reps", reps, { reps = it }, "5", Modifier.weight(1f))
                 Column(Modifier.weight(1.2f)) {
                     SectionLabel("Load", tracking = 0.10f, modifier = Modifier.padding(bottom = 5.dp))
                     NumberField(
@@ -136,12 +164,22 @@ fun AddExerciseDialog(
             ) {
                 QuietAction("Cancel", modifier = Modifier.weight(1f), onClick = onDismiss)
                 AccentAction(
-                    "Add",
+                    if (initial == null) "Add" else "Save",
                     modifier = Modifier.weight(1f),
-                    borderColor = if (canAdd) Accent else BorderAction,
+                    borderColor = if (canSave) Accent else BorderAction,
                     onClick = {
-                        if (canAdd) onAdd(buildExercise(cleanName, setCount!!, repCount!!, kg!!))
+                        if (canSave) onSave(buildExercise(cleanName, setCount!!, repCount!!, kg!!, unit))
                     },
+                )
+            }
+
+            if (onDelete != null) {
+                QuietAction(
+                    "Remove from board",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp),
+                    onClick = onDelete,
                 )
             }
         }
