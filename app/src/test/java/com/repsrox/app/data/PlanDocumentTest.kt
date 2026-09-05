@@ -245,3 +245,125 @@ class PlanDocumentToleranceTest {
         assertTrue(parsePlan(markdown).sessions.isEmpty())
     }
 }
+
+class PlanDocumentMealTest {
+
+    private val day = LocalDate.of(2026, 8, 10)
+
+    private val meals = listOf(
+        Meal("m1", day, "Breakfast", "Oats, whey, banana", kcal = 620, proteinG = 42, carbsG = 78, logged = true),
+        Meal("m2", day, "Lunch", "Rice, chicken, greens", kcal = 780, proteinG = 62, carbsG = 96),
+        Meal("m3", day.plusDays(1), "Post-session", "", kcal = 0, proteinG = 40, carbsG = 0),
+    )
+
+    private fun roundTrip() = parsePlan(exportPlan(emptyList(), day, meals = meals))
+
+    @Test
+    fun `a round trip reproduces the meals, keyed by day`() {
+        val parsed = roundTrip()
+        assertEquals(setOf(day, day.plusDays(1)), parsed.meals.keys)
+        assertEquals(listOf("Breakfast", "Lunch"), parsed.meals.getValue(day).map { it.name })
+    }
+
+    @Test
+    fun `a meal's detail and figures survive the document`() {
+        val breakfast = roundTrip().meals.getValue(day).first()
+        assertEquals("Oats, whey, banana", breakfast.detail)
+        assertEquals(620, breakfast.kcal)
+        assertEquals(42, breakfast.proteinG)
+        assertEquals(78, breakfast.carbsG)
+    }
+
+    @Test
+    fun `an uncosted meal comes back uncosted rather than unreadable`() {
+        val parsed = roundTrip()
+        val post = parsed.meals.getValue(day.plusDays(1)).single()
+        assertEquals("", post.detail)
+        assertEquals(0, post.kcal)
+        assertEquals(40, post.proteinG)
+        assertTrue(parsed.problems.isEmpty())
+    }
+
+    @Test
+    fun `a check-in is never written out, since the document plans rather than records`() {
+        assertFalse(roundTrip().meals.getValue(day).any { it.logged })
+    }
+
+    @Test
+    fun `a document can plan meals for a day that carries no session at all`() {
+        val parsed = roundTrip()
+        assertTrue(parsed.sessions.isEmpty())
+        assertFalse(parsed.isEmpty)
+    }
+
+    @Test
+    fun `the summary counts sessions and meals apart`() {
+        val plan = listOf(
+            PlannedSession(
+                id = "a1",
+                date = day,
+                name = "Lower push",
+                kind = SessionKind.STRENGTH,
+                exercises = listOf(buildExercise("Back squat", sets = 5, reps = 5, kg = 120f)),
+            ),
+        )
+        val summary = parsePlan(exportPlan(plan, day, meals = meals)).summary()
+        assertTrue(summary.contains("1 session"))
+        assertTrue(summary.contains("3 meals"))
+    }
+
+    @Test
+    fun `a hand-written meal table is read on its column headings, not their order`() {
+        val markdown = """
+            ## Meals
+
+            ### 2026-08-10
+
+            | Kcal | Protein (g) | Meal | Detail |
+            | --- | --- | --- | --- |
+            | 450 | 30 | Snack | Greek yoghurt |
+        """.trimIndent()
+
+        val meal = parsePlan(markdown).meals.getValue(day).single()
+        assertEquals("Snack", meal.name)
+        assertEquals("Greek yoghurt", meal.detail)
+        assertEquals(450, meal.kcal)
+        assertEquals(30, meal.proteinG)
+        // A column the table never carried is nothing, not a slip.
+        assertEquals(0, meal.carbsG)
+    }
+
+    @Test
+    fun `a meal figure that will not read is reported rather than guessed at`() {
+        val markdown = """
+            ## Meals
+
+            ### 2026-08-10
+
+            | Meal | Kcal |
+            | --- | --- |
+            | Snack | loads |
+        """.trimIndent()
+
+        val parsed = parsePlan(markdown)
+        assertEquals("Snack", parsed.meals.getValue(day).single().name)
+        assertEquals(0, parsed.meals.getValue(day).single().kcal)
+        assertTrue(parsed.problems.isEmpty())
+    }
+
+    @Test
+    fun `a meal row with no name is skipped and reported`() {
+        val markdown = """
+            ## Meals
+
+            ### 2026-08-10
+
+            | Meal | Kcal |
+            | --- | --- |
+            |  | 450 |
+        """.trimIndent()
+
+        assertTrue(parsePlan(markdown).meals.isEmpty())
+        assertEquals(1, parsePlan(markdown).problems.size)
+    }
+}

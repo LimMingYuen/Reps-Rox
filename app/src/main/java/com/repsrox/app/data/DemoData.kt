@@ -1,6 +1,7 @@
 package com.repsrox.app.data
 
 import java.time.DayOfWeek
+import java.time.LocalDate
 
 /**
  * Fixed sample content, transcribed from the "Reps and Rox App" design. This is
@@ -10,51 +11,41 @@ import java.time.DayOfWeek
 
 // ── Strength session ────────────────────────────────────────────────────────
 
-/**
- * Where the live session clock starts, in seconds. The design opens the app
- * part-way through a session rather than at zero, and a session started after
- * one is banked begins at nothing.
- */
-const val LIVE_ELAPSED = 1877
-
 // ── Race simulation ─────────────────────────────────────────────────────────
 
-data class Leg(val tag: String, val name: String, val target: String) {
+/**
+ * One leg of the course. [targetSeconds] is the time to beat and the only
+ * figure the splits measure against, so what a leg prints and what the maths
+ * uses cannot drift apart.
+ */
+data class Leg(val tag: String, val name: String, val brief: String, val targetSeconds: Int) {
     val isStation: Boolean get() = tag.startsWith("STN")
+
+    /** What the board prints under the name: the brief, then the time to beat. */
+    val target: String get() = "$brief · target ${formatMinutes(targetSeconds)}"
 }
 
 val LEGS = listOf(
-    Leg("RUN 1", "1 km run", "1 km · target 4:35"),
-    Leg("STN 1", "SkiErg", "1000 m"),
-    Leg("RUN 2", "1 km run", "1 km · target 4:40"),
-    Leg("STN 2", "Sled push", "50 m · 152 kg"),
-    Leg("RUN 3", "1 km run", "1 km · target 4:45"),
-    Leg("STN 3", "Sled pull", "50 m · 103 kg"),
-    Leg("RUN 4", "1 km run", "1 km · target 4:45"),
-    Leg("STN 4", "Burpee broad jump", "80 m"),
-    Leg("RUN 5", "1 km run", "1 km · target 4:50"),
-    Leg("STN 5", "Rowing", "1000 m"),
-    Leg("RUN 6", "1 km run", "1 km · target 4:50"),
-    Leg("STN 6", "Farmers carry", "200 m · 2 × 24 kg"),
-    Leg("RUN 7", "1 km run", "1 km · target 4:55"),
-    Leg("STN 7", "Sandbag lunges", "100 m · 20 kg"),
-    Leg("RUN 8", "1 km run", "1 km · target 5:00"),
-    Leg("STN 8", "Wall balls", "100 reps · 9 kg"),
-)
-
-val LEG_TIMES = listOf(252, 275, 278, 172, 285, 208, 288, 244, 292, 268, 295, 176, 298, 232, 302, 366)
-
-val LEG_DELTA = listOf(
-    "−0:03", "+0:12", "+0:03", "−0:08", "+0:10", "+0:04", "0:00", "+0:19",
-    "+0:07", "−0:05", "+0:12", "−0:11", "+0:14", "+0:06", "+0:18", "+0:24",
+    Leg("RUN 1", "1 km run", "1 km", 275),
+    Leg("STN 1", "SkiErg", "1000 m", 270),
+    Leg("RUN 2", "1 km run", "1 km", 280),
+    Leg("STN 2", "Sled push", "50 m · 152 kg", 150),
+    Leg("RUN 3", "1 km run", "1 km", 285),
+    Leg("STN 3", "Sled pull", "50 m · 103 kg", 210),
+    Leg("RUN 4", "1 km run", "1 km", 285),
+    Leg("STN 4", "Burpee broad jump", "80 m", 270),
+    Leg("RUN 5", "1 km run", "1 km", 290),
+    Leg("STN 5", "Rowing", "1000 m", 270),
+    Leg("RUN 6", "1 km run", "1 km", 290),
+    Leg("STN 6", "Farmers carry", "200 m · 2 × 24 kg", 165),
+    Leg("RUN 7", "1 km run", "1 km", 295),
+    Leg("STN 7", "Sandbag lunges", "100 m · 20 kg", 240),
+    Leg("RUN 8", "1 km run", "1 km", 300),
+    Leg("STN 8", "Wall balls", "100 reps · 9 kg", 330),
 )
 
 /** The sled the race pushes, in kilograms — mirrors the STN 2 leg above. */
 const val RACE_SLED_KG = 152f
-
-const val ROXZONE_TOTAL = "3:42"
-const val RACE_RUN_AVG = "4:38"
-const val RACE_PROJECTED = "1:22:40"
 
 // ── Week plan ───────────────────────────────────────────────────────────────
 
@@ -107,35 +98,21 @@ val ZONES = listOf(
 
 const val ZONE_COLUMN_HEIGHT = 52f
 
-data class Split(val km: String, val pace: String, val width: Int)
-
-val RUN_SPLITS = listOf(
-    Split("1", "5:22", 68), Split("2", "5:16", 74),
-    Split("3", "5:09", 82), Split("4", "5:11", 80),
-    Split("5", "5:04", 88), Split("6", "5:08", 84),
-    Split("7", "4:58", 96), Split("8", "5:12", 78),
-)
-
 /** Seconds per kilometre used to derive the running distance from the clock. */
 const val RUN_SECONDS_PER_KM = 312f
 
 // ── Fuel ────────────────────────────────────────────────────────────────────
 
-data class Macro(val label: String, val value: String, val percent: Int, val accented: Boolean)
-
-val MACROS = listOf(
-    Macro("Calories", "2,180 / 2,540", 86, accented = false),
-    Macro("Protein", "148 / 165 g", 90, accented = true),
-    Macro("Carbs", "244 / 290 g", 84, accented = false),
-)
-
-data class Meal(val key: String, val name: String, val meta: String, val kcal: String)
-
-val MEALS = listOf(
-    Meal("b", "Breakfast", "Oats, whey, banana", "620"),
-    Meal("l", "Lunch", "Rice, chicken, greens", "780"),
-    Meal("d", "Dinner", "Not logged", "—"),
-    Meal("s", "Post-session", "40 g protein target", "—"),
+/**
+ * The design's four meals, as the shape a fresh install is seeded with. They
+ * carry no date or id of their own — [MealRepository] hangs them off the day
+ * the app is first opened.
+ */
+val MEAL_TEMPLATE = listOf(
+    Meal("", LocalDate.MIN, "Breakfast", "Oats, whey, banana", kcal = 620, proteinG = 42, carbsG = 78, logged = true),
+    Meal("", LocalDate.MIN, "Lunch", "Rice, chicken, greens", kcal = 780, proteinG = 62, carbsG = 96, logged = true),
+    Meal("", LocalDate.MIN, "Dinner", "Salmon, potatoes, salad", kcal = 720, proteinG = 48, carbsG = 74),
+    Meal("", LocalDate.MIN, "Post-session", "40 g protein target", kcal = 220, proteinG = 40, carbsG = 22),
 )
 
 // ── Body ────────────────────────────────────────────────────────────────────
@@ -150,15 +127,12 @@ val WEIGHT_SERIES = listOf(
 
 // ── Profile ─────────────────────────────────────────────────────────────────
 
-data class PersonalRecord(val name: String, val value: String, val whenLabel: String? = null)
-
-val PR_LIFTS = listOf(
-    PersonalRecord("Back squat", "150 kg", "Jun"),
-    PersonalRecord("Deadlift", "185 kg", "Jul"),
-    PersonalRecord("Bench press", "105 kg", "May"),
-    PersonalRecord("5 km run", "22:41", "Aug"),
-)
-
+/**
+ * The design's station bests. Unlike the lifts — which [bestLifts] now reads off
+ * the sessions log — nothing measures these yet: the live tracker banks a sled
+ * push as metres moved and never times the leg, so there is no figure to derive.
+ * They stay sample content until it does.
+ */
 val PR_STATIONS = listOf(
     PersonalRecord("SkiErg 1000 m", "4:02"),
     PersonalRecord("Sled push 50 m", "2:38"),

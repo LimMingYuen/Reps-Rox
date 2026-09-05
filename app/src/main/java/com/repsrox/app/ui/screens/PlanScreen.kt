@@ -35,9 +35,11 @@ import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.SessionKind
 import com.repsrox.app.data.exportPlan
 import com.repsrox.app.data.plural
+import com.repsrox.app.data.rollingWeek
 import com.repsrox.app.data.weekDates
 import com.repsrox.app.data.weekStart
 import com.repsrox.app.ui.BodyViewModel
+import com.repsrox.app.ui.FuelViewModel
 import com.repsrox.app.ui.PlanViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.Screen
@@ -66,13 +68,16 @@ fun PlanScreen(
     viewModel: RepsRoxViewModel,
     planViewModel: PlanViewModel = viewModel(),
     bodyViewModel: BodyViewModel = viewModel(),
+    fuelViewModel: FuelViewModel = viewModel(),
 ) {
     val sessions by planViewModel.sessions.collectAsState()
     val today = remember { LocalDate.now() }
     val weekStart = viewModel.weekStart
+    val rollingPlan by planViewModel.rollingPlan.collectAsState()
     var saving by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
+    var stopping by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -87,6 +92,9 @@ fun PlanScreen(
         val week = weekStart.weekDates().toSet()
         val thisWeek = plan.filter { it.date in week }
         val training = thisWeek.count { it.kind != SessionKind.REST }
+        // A week nothing has been written into yet is the plan being printed. Say so,
+        // so a week that fills itself does not look like one someone else planned.
+        val fromPlan = thisWeek.isNotEmpty() && thisWeek.all { rollingWeek(it.id) != null }
 
         WeekHeader(
             weekStart = weekStart,
@@ -96,7 +104,11 @@ fun PlanScreen(
             number = plan.minOfOrNull { it.date }?.let {
                 ChronoUnit.WEEKS.between(it.weekStart(), weekStart) + 1
             },
-            detail = if (thisWeek.isEmpty()) "empty" else "$training ${plural(training, "session")}",
+            detail = when {
+                thisWeek.isEmpty() -> "empty"
+                fromPlan -> "$training ${plural(training, "session")} · from your plan"
+                else -> "$training ${plural(training, "session")}"
+            },
             onStep = { viewModel.goToWeek(weekStart.plusWeeks(it)) },
         )
 
@@ -141,6 +153,30 @@ fun PlanScreen(
             QuietAction("Export", modifier = Modifier.weight(1f), onClick = { exporting = true })
             QuietAction("Import", modifier = Modifier.weight(1f), onClick = { importing = true })
         }
+
+        // A plan that repeats has to be stoppable, or a week can never be empty again.
+        if (rollingPlan != null) {
+            QuietAction(
+                "Stop following plan",
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { stopping = true },
+            )
+        }
+    }
+
+    if (stopping) {
+        ConfirmDialog(
+            title = "Stop following plan",
+            body = "Weeks ahead go back to empty. Weeks you have already edited or " +
+                "finished keep what they hold, and the plan itself stays in \"My plans\" " +
+                "if you saved it there.",
+            confirm = "Stop",
+            onDismiss = { stopping = false },
+            onConfirm = {
+                planViewModel.clearRollingPlan()
+                stopping = false
+            },
+        )
     }
 
     if (saving) {
@@ -156,8 +192,15 @@ fun PlanScreen(
     if (exporting) {
         val banked = viewModel.bankedSessions.collectAsState().value.orEmpty()
         val weighIns = bodyViewModel.weighIns.collectAsState().value.orEmpty()
+        val meals = fuelViewModel.meals.collectAsState().value.orEmpty()
         ExportPlanDialog(
-            markdown = exportPlan(sessions.orEmpty(), weekStart, banked, weighIns),
+            markdown = exportPlan(
+                plan = sessions.orEmpty(),
+                weekStart = weekStart,
+                meals = meals,
+                banked = banked,
+                weighIns = weighIns,
+            ),
             onDismiss = { exporting = false },
         )
     }
@@ -166,7 +209,9 @@ fun PlanScreen(
         ImportPlanDialog(
             onDismiss = { importing = false },
             onApply = { parsed ->
+                // Sessions and meals are stored apart, so a document lands in two places.
                 planViewModel.applyImport(parsed)
+                fuelViewModel.applyImport(parsed)
                 importing = false
             },
         )

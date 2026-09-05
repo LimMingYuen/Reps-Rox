@@ -66,8 +66,9 @@ fun ExportPlanDialog(markdown: String, onDismiss: () -> Unit) {
         ) {
             SectionLabel("Export plan")
             Text(
-                "Your strength sessions' exercises, plus recent training and weigh-ins " +
-                    "as context. Only the Sessions table is read back in on import.",
+                "Your strength sessions' exercises and your planned meals, plus recent " +
+                    "training and weigh-ins as context. Sessions and Meals are read back " +
+                    "in on import; Context never is.",
                 color = TextFaint,
                 style = inter(10.5f, lineHeight = 1.5f),
                 modifier = Modifier.padding(top = 6.dp, bottom = 10.dp),
@@ -136,8 +137,10 @@ fun ImportPlanDialog(onDismiss: () -> Unit, onApply: (ParsedPlan) -> Unit) {
         ) {
             SectionLabel("Import plan")
             Text(
-                "Paste an edited plan document, or open one as a file. Only sessions " +
-                    "still on this week's plan are updated.",
+                "Paste an edited plan document, or open one as a file. Its sessions " +
+                    "become the plan every week from this one on follows, until you " +
+                    "import another — you do not plan a week at a time. Meals land on " +
+                    "the dates they name; days left out are untouched.",
                 color = TextFaint,
                 style = inter(10.5f, lineHeight = 1.5f),
                 modifier = Modifier.padding(top = 6.dp, bottom = 10.dp),
@@ -149,18 +152,19 @@ fun ImportPlanDialog(onDismiss: () -> Unit, onApply: (ParsedPlan) -> Unit) {
                     .heightIn(min = 120.dp, max = 220.dp)
                     .background(SurfaceRaised, RoundedCornerShape(6.dp))
                     .border(1.dp, BorderChip, RoundedCornerShape(6.dp))
-                    .padding(10.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .padding(10.dp),
             ) {
                 if (text.isEmpty()) {
                     Text("Paste your edited plan here…", color = TextDim, style = mono(10.5f))
                 }
+                // Fills the whole box so a long-press anywhere in it reaches the field —
+                // and scrolls itself, which it cannot do inside a scrolling parent.
                 BasicTextField(
                     value = text,
                     onValueChange = { text = it.take(MAX_IMPORT_CHARS) },
                     textStyle = mono(10.5f).copy(color = TextPrimary, lineHeight = 16.sp),
                     cursorBrush = SolidColor(Accent),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
                 )
             }
 

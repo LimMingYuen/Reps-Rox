@@ -17,11 +17,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.repsrox.app.data.LEGS
-import com.repsrox.app.data.LEG_DELTA
-import com.repsrox.app.data.LEG_TIMES
-import com.repsrox.app.data.RACE_PROJECTED
-import com.repsrox.app.data.RACE_RUN_AVG
-import com.repsrox.app.data.ROXZONE_TOTAL
+import com.repsrox.app.data.formatDelta
+import com.repsrox.app.data.formatHours
+import com.repsrox.app.data.formatMinutes
+import com.repsrox.app.data.legDelta
+import com.repsrox.app.data.projectedFinish
+import com.repsrox.app.data.runAverage
+import com.repsrox.app.data.stationAverage
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.components.AccentAction
 import com.repsrox.app.ui.components.Panel
@@ -29,8 +31,6 @@ import com.repsrox.app.ui.components.RuledRow
 import com.repsrox.app.ui.components.SectionLabel
 import com.repsrox.app.ui.components.SegmentRing
 import com.repsrox.app.ui.components.VerticalRule
-import com.repsrox.app.ui.formatHours
-import com.repsrox.app.ui.formatMinutes
 import com.repsrox.app.ui.theme.Accent
 import com.repsrox.app.ui.theme.AccentLine
 import com.repsrox.app.ui.theme.AccentTint
@@ -43,8 +43,19 @@ import com.repsrox.app.ui.theme.inter
 import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
 
+/**
+ * The simulation, timed leg by leg. Advancing closes the leg being raced at
+ * whatever the clock says it took, so every split and delta on this board is
+ * measured rather than written in.
+ *
+ * The design's Roxzone total is gone: the roxzone is the walk between a station
+ * and the next run, and the course here is a contiguous list of legs with no
+ * transition to time. Station average takes its place — a figure the clock can
+ * actually stand behind.
+ */
 @Composable
 fun RaceScreen(viewModel: RepsRoxViewModel) {
+    val closed = viewModel.legSeconds.toList()
     val leg = viewModel.leg
     val onStation = leg.isStation
     val stationNumber = viewModel.stationNumber
@@ -77,7 +88,7 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
             }
             Column(Modifier.weight(1f)) {
                 SectionLabel(
-                    if (onStation) "On station" else "Roxzone → run",
+                    if (onStation) "On station" else "On the run",
                     color = Accent,
                 )
                 Text(
@@ -98,12 +109,25 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
                     style = oswald(34f, lineHeight = 1f),
                     modifier = Modifier.padding(top = 10.dp),
                 )
+                Text(
+                    "This leg ${formatMinutes(viewModel.currentLegSeconds)} " +
+                        "· target ${formatMinutes(leg.targetSeconds)}",
+                    color = TextMeta,
+                    style = mono(11f),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AccentAction(
-                if (viewModel.raceOn) "Pause" else "Resume",
+                // A sim yet to be started reads Start, not Resume: there is
+                // nothing to resume until the clock has run.
+                when {
+                    viewModel.raceOn -> "Pause"
+                    viewModel.raceSeconds == 0 -> "Start"
+                    else -> "Resume"
+                },
                 modifier = Modifier.weight(1f),
                 verticalPadding = 13.dp,
                 onClick = viewModel::toggleRace,
@@ -121,19 +145,21 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
 
         Panel(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                RaceStat("Roxzone", ROXZONE_TOTAL)
+                RaceStat("Station avg", stationAverage(closed)?.let(::formatMinutes) ?: "—")
                 VerticalRule(height = 38.dp)
-                RaceStat("Run avg", RACE_RUN_AVG)
+                RaceStat("Run avg", runAverage(closed)?.let(::formatMinutes) ?: "—")
                 VerticalRule(height = 38.dp)
-                RaceStat("Projected", RACE_PROJECTED)
+                RaceStat("Projected", formatHours(projectedFinish(viewModel.raceSeconds, closed)))
             }
         }
 
         Column {
             SectionLabel("Splits", modifier = Modifier.padding(bottom = 4.dp))
             LEGS.forEachIndexed { index, item ->
-                val past = index < viewModel.legIndex
-                val now = index == viewModel.legIndex
+                val split = closed.getOrNull(index)
+                val past = split != null
+                val now = index == viewModel.legIndex && split == null
+                val delta = split?.let { legDelta(index, it) }
                 val ink = when {
                     now -> Accent
                     past -> TextPrimary
@@ -158,17 +184,17 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
                     )
                     Text(
                         when {
-                            past -> formatMinutes(LEG_TIMES[index])
-                            now -> "running"
+                            split != null -> formatMinutes(split)
+                            now && viewModel.raceSeconds > 0 -> "running"
                             else -> "—"
                         },
                         color = ink,
                         style = mono(12f, FontWeight.W500),
                     )
                     Text(
-                        if (past) LEG_DELTA[index] else "",
+                        delta?.let(::formatDelta).orEmpty(),
                         // Under target reads as a win, so it takes the accent.
-                        color = if (past && LEG_DELTA[index].startsWith("−")) Accent else TextMuted,
+                        color = if (delta != null && delta < 0) Accent else TextMuted,
                         style = mono(10.5f),
                         textAlign = TextAlign.End,
                         modifier = Modifier.width(38.dp),

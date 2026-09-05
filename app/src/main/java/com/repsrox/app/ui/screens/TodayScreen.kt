@@ -27,19 +27,25 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.repsrox.app.data.FuelSummary
 import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.SessionKind
 import com.repsrox.app.data.dayLabel
+import com.repsrox.app.data.formatKcal
 import com.repsrox.app.data.formatKilos
+import com.repsrox.app.data.formatMinutes
 import com.repsrox.app.data.formatSigned
 import com.repsrox.app.data.formatTonnes
 import com.repsrox.app.data.formatVolume
 import com.repsrox.app.data.summarise
+import com.repsrox.app.data.summariseFuel
+import com.repsrox.app.data.targetKcal
 import com.repsrox.app.data.totalSets
 import com.repsrox.app.data.volumeKg
 import com.repsrox.app.data.weekDates
 import com.repsrox.app.data.weekStart
 import com.repsrox.app.ui.BodyViewModel
+import com.repsrox.app.ui.FuelViewModel
 import com.repsrox.app.ui.PlanViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.Screen
@@ -51,7 +57,6 @@ import com.repsrox.app.ui.components.SectionLabel
 import com.repsrox.app.ui.components.SegmentRing
 import com.repsrox.app.ui.components.StatBlock
 import com.repsrox.app.ui.components.icon
-import com.repsrox.app.ui.formatMinutes
 import com.repsrox.app.ui.theme.Accent
 import com.repsrox.app.ui.theme.TextFaint
 import com.repsrox.app.ui.theme.TextMeta
@@ -63,15 +68,16 @@ import com.repsrox.app.ui.theme.inter
 import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
 import java.time.LocalDate
+import java.time.format.TextStyle as DateTextStyle
 import java.time.temporal.ChronoUnit
 import java.util.Locale
-import java.time.format.TextStyle as DateTextStyle
 
 @Composable
 fun TodayScreen(
     viewModel: RepsRoxViewModel,
     bodyViewModel: BodyViewModel = viewModel(),
     planViewModel: PlanViewModel = viewModel(),
+    fuelViewModel: FuelViewModel = viewModel(),
 ) {
     val weight = bodyViewModel.weighIns.collectAsState().value
         ?.let { entries -> remember(entries) { summarise(entries) } }
@@ -154,7 +160,14 @@ fun TodayScreen(
             onSeeWeek = { viewModel.go(Screen.Plan) },
         )
 
-        FuelStrip(onClick = { viewModel.go(Screen.Fuel) })
+        val fuel = fuelViewModel.meals.collectAsState().value
+            ?.filter { it.date == today }
+            ?.let { meals ->
+                remember(meals, todaySession) {
+                    summariseFuel(meals, targetKcal(training = todaySession != null))
+                }
+            }
+        FuelStrip(summary = fuel, onClick = { viewModel.go(Screen.Fuel) })
 
         Column(Modifier.padding(top = 2.dp)) {
             SectionLabel("Last sessions", modifier = Modifier.padding(bottom = 9.dp))
@@ -328,7 +341,7 @@ private fun WeekRingCard(
 }
 
 @Composable
-private fun FuelStrip(onClick: () -> Unit) {
+private fun FuelStrip(summary: FuelSummary?, onClick: () -> Unit) {
     Panel(onClick = onClick, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -340,20 +353,26 @@ private fun FuelStrip(onClick: () -> Unit) {
                 tint = TextMuted,
                 modifier = Modifier.size(19.dp),
             )
+            // Protein is the macro with the hard floor, so it is the one the strip carries.
+            val protein = summary?.macros?.firstOrNull { it.label == "Protein" }
             Column(Modifier.weight(1f)) {
                 Text(
-                    "Protein 148 / 165 g",
+                    protein?.let { "Protein ${it.value}" } ?: "Plan today's meals",
                     color = TextPrimary,
                     style = inter(12.5f, FontWeight.W500, lineHeight = 1.3f),
                 )
                 Meter(
-                    fraction = 0.90f,
+                    fraction = (protein?.percent ?: 0) / 100f,
                     height = 4.dp,
                     track = Track,
                     modifier = Modifier.padding(top = 7.dp),
                 )
             }
-            Text("+320 kcal", color = TextMeta, style = mono(11f))
+            Text(
+                summary?.let { "${formatKcal(it.targetKcal)} kcal" } ?: "—",
+                color = TextMeta,
+                style = mono(11f),
+            )
         }
     }
 }

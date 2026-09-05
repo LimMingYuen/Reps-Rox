@@ -113,7 +113,7 @@ fun RepsRoxApp(
                     Screen.Live -> LiveScreen(viewModel)
                     Screen.Run -> RunScreen(viewModel)
                     Screen.Race -> RaceScreen(viewModel)
-                    Screen.Fuel -> FuelScreen(viewModel)
+                    Screen.Fuel -> FuelScreen()
                     Screen.Body -> BodyScreen()
                     Screen.Summary -> SummaryScreen(viewModel)
                     Screen.Profile -> ProfileScreen()
