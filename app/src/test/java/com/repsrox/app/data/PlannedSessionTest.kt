@@ -1,9 +1,7 @@
 package com.repsrox.app.data
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.time.DayOfWeek
 import java.time.LocalDate
 
 class PlanCodecTest {
@@ -164,12 +162,5 @@ class PlannedSessionTest {
             exercises = listOf(buildExercise("Farmers carry", 4, 40, 32f, SetUnit.METRES)),
         )
         assertEquals(0f, carry.volumeKg, 0.01f)
-    }
-
-    @Test
-    fun `the seed covers a whole week, one session a day`() {
-        assertEquals(7, WEEK_TEMPLATE.size)
-        assertEquals(DayOfWeek.entries, WEEK_TEMPLATE.map { it.dayOfWeek })
-        assertTrue(WEEK_TEMPLATE.any { it.exercises.isNotEmpty() })
     }
 }

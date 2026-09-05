@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -61,6 +62,13 @@ fun PlansScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = view
             .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        // The shelf is a detour off the week, so the way back is on the screen too.
+        QuietAction(
+            "Back to the week",
+            icon = Icons.Filled.ChevronLeft,
+            onClick = { viewModel.back() },
+        )
+
         val saved = plans ?: return@Column
 
         if (saved.isEmpty()) {

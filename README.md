@@ -76,8 +76,26 @@ RepsRox/
 groups — Train covers the week, live session, run and summary; You covers profile
 and body — and Back walks out to the group's root.
 
-Weigh-ins and finished strength sessions are kept on disk (DataStore); the run,
-the race sim, the week and the fuel check-ins are still fixed sample data.
+The week, meals, weigh-ins and finished strength sessions are kept on disk
+(DataStore); the run and the race sim are still fixed sample data.
+
+### Plan documents
+
+The week exports as a Markdown document (Train → Export) that can be edited by
+hand and read back in. Two sections are applied on import:
+
+- `## Sessions` — a table of exercises per dated strength session. A date with
+  no matching session on the plan is dropped, since there is nothing to attach
+  the edit to.
+- `## Meals` — a table of meals per date. A date the document carries replaces
+  whatever that day held; dates it leaves out are untouched, and a meal day does
+  not need a session on it. Check-ins are never exported and survive a re-import,
+  because the document plans what you will eat rather than recording what you ate.
+
+`## Context` (recent training and weigh-ins) is printed for reference and always
+ignored on the way back in. Meals are also yours to add, edit and remove on the
+Fuel screen, a day at a time; only meals you have checked in count towards the
+day's macros.
 
 ## Running on a Device/Emulator
 

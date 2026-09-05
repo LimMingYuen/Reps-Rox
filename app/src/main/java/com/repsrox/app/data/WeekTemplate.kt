@@ -112,6 +112,94 @@ fun weekAsTemplate(
 /** The count of weeks a plan can be laid down for in one go. */
 val REPEAT_RANGE = 1..12
 
+// ── The rolling plan ───────────────────────────────────────────────────────
+
+/**
+ * One plan can be the shape of every week from here on rather than a week you
+ * lay down again each Monday. Weeks it fills are not written to disk — they are
+ * worked out from the plan whenever the week is read — so changing the plan
+ * changes every week ahead at once.
+ *
+ * A week that holds a stored session of its own is that week's own business and
+ * the plan leaves it alone whole. That is what makes a week editable: the first
+ * edit writes the week down (see the fork in `PlanViewModel`), and from then on
+ * it is a real week rather than a printing of the plan.
+ */
+const val ROLLING_PREFIX = "rolling"
+
+/** How far ahead the plan is worked out. Past a year, a plan is a different plan. */
+const val ROLLING_HORIZON_WEEKS = 52
+
+/** The id a session printed from the plan carries — the week it fell in, and where in it. */
+fun rollingId(weekStart: LocalDate, index: Int): String = "$ROLLING_PREFIX-$weekStart-$index"
+
+/** The week a printed session belongs to, or null for one that was written down. */
+fun rollingWeek(id: String): LocalDate? {
+    if (!id.startsWith("$ROLLING_PREFIX-")) return null
+    val date = id.removePrefix("$ROLLING_PREFIX-").substringBeforeLast("-")
+    return runCatching { LocalDate.parse(date) }.getOrNull()
+}
+
+/**
+ * The plan as the app reads it: what is stored, plus [rolling] printed onto every
+ * week from [today]'s on that holds nothing of its own. Weeks behind you are left
+ * as they were — a plan says what you will do, and cannot say what you did.
+ */
+fun projectPlan(
+    stored: List<PlannedSession>,
+    rolling: WeekTemplate?,
+    today: LocalDate,
+    weeks: Int = ROLLING_HORIZON_WEEKS,
+): List<PlannedSession> {
+    if (rolling == null || rolling.sessions.isEmpty()) return stored
+    val spokenFor = stored.mapTo(mutableSetOf()) { it.date.weekStart() }
+    val start = today.weekStart()
+    val printed = (0 until weeks)
+        .map { start.plusWeeks(it.toLong()) }
+        .filterNot { it in spokenFor }
+        .flatMap { week -> rolling.materialise(week) { index -> rollingId(week, index) } }
+    return (stored + printed).sortedBy { it.date }
+}
+
+/**
+ * The week beginning [weekStart] written down as the plan currently prints it, or
+ * null when there is nothing to write: no plan is in force, or the week already
+ * holds sessions of its own and is nobody's business but its own.
+ *
+ * This is what a week has to go through before anything in it can be edited,
+ * finished or deleted — until then its sessions are printed rather than stored,
+ * and there is nothing on disk to change.
+ */
+fun writeDownWeek(
+    stored: List<PlannedSession>,
+    rolling: WeekTemplate?,
+    weekStart: LocalDate,
+): List<PlannedSession>? {
+    if (rolling == null || rolling.sessions.isEmpty()) return null
+    if (stored.any { it.date.weekStart() == weekStart }) return null
+    return (stored + rolling.materialise(weekStart) { rollingId(weekStart, it) }).sortedBy { it.date }
+}
+
+/**
+ * Lays [plan] over the weeks already written down — this week's and any ahead of
+ * it. Weeks holding nothing of their own need no help: the plan prints onto them
+ * itself. The week under way does, and that is the week being looked at, so a plan
+ * that changed every week but this one would read as not having landed at all.
+ * Weeks behind you, and sessions already finished, are left as they are.
+ */
+fun applyPlanToWrittenWeeks(
+    stored: List<PlannedSession>,
+    plan: WeekTemplate,
+    today: LocalDate,
+    id: (Int) -> String,
+): List<PlannedSession> {
+    val from = today.weekStart()
+    return stored.map { it.date.weekStart() }
+        .filterNot { it.isBefore(from) }
+        .distinct()
+        .fold(stored) { written, week -> applyTemplate(written, plan, week, id) }
+}
+
 private fun SessionKind.shortLabel(): String = when (this) {
     SessionKind.STRENGTH -> "lift"
     SessionKind.RUN -> "run"

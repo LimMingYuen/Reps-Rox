@@ -6,20 +6,18 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.toMutableStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.repsrox.app.data.Exercise
 import com.repsrox.app.data.LEGS
-import com.repsrox.app.data.LIVE_ELAPSED
 import com.repsrox.app.data.LoggedExercise
-import com.repsrox.app.data.MEALS
 import com.repsrox.app.data.PlanRepository
 import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.RUN_SECONDS_PER_KM
 import com.repsrox.app.data.Session
 import com.repsrox.app.data.SessionKind
 import com.repsrox.app.data.SessionRepository
+import com.repsrox.app.data.formatMinutes
 import com.repsrox.app.data.weekStart
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,12 +28,13 @@ import java.time.LocalDate
 import java.util.Locale
 
 /**
- * Everything the design's script block kept in component state. Initial values
- * are the design's, so the app opens mid-week with a session part-logged.
+ * Everything the design's script block kept in component state. Every clock
+ * here starts at zero and stopped: opening a board is not starting the work on
+ * it, which is what the Start button is for.
  *
  * The strength session is the one thing here that outlives the process: finishing
- * it writes it to [SessionRepository] and the summary reads it back. The run,
- * the race and the fuel check-ins are still the design's fixed sample content.
+ * it writes it to [SessionRepository] and the summary reads it back. The run and
+ * the race hold their splits only as long as the process lives.
  */
 class RepsRoxViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -70,34 +69,36 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
     var currentExercise by mutableIntStateOf(0)
         private set
 
-    var restSeconds by mutableIntStateOf(96)
+    var restSeconds by mutableIntStateOf(0)
         private set
 
-    /** The live session's own clock. Seeded mid-session, as the design opens. */
-    var sessionSeconds by mutableIntStateOf(LIVE_ELAPSED)
+    /** The live session's own clock, from the moment a session is opened. */
+    var sessionSeconds by mutableIntStateOf(0)
         private set
 
-    /** False once the session has been banked, until the next one is started. */
-    var sessionLive by mutableStateOf(true)
+    /** True only while a session is being worked. Opening the board starts one. */
+    var sessionLive by mutableStateOf(false)
         private set
 
-    var runSeconds by mutableIntStateOf(2498)
+    /** The run's own clock. Starts at zero and stopped: opening the board is not running. */
+    var runSeconds by mutableIntStateOf(0)
         private set
 
-    var runOn by mutableStateOf(true)
+    var runOn by mutableStateOf(false)
         private set
 
-    var raceSeconds by mutableIntStateOf(2874)
+    /** The sim's own clock, on the same terms as the run's — Start begins it, not arriving. */
+    var raceSeconds by mutableIntStateOf(0)
         private set
 
-    var raceOn by mutableStateOf(true)
+    /** Kilometres closed, in the order they were run. What the splits table shows. */
+    val runSplits = mutableStateListOf<Int>()
+
+    var raceOn by mutableStateOf(false)
         private set
 
-    var legIndex by mutableIntStateOf(5)
-        private set
-
-    /** Keys of the meals checked off today. */
-    val mealsLogged = listOf("b", "l").toMutableStateList()
+    /** Legs closed, in course order, each at whatever the clock said it took. */
+    val legSeconds = mutableStateListOf<Int>()
 
     /** Which banked session the summary shows. Null means the newest one. */
     var viewedSession by mutableStateOf<Instant?>(null)
@@ -117,7 +118,26 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
 
     val totalSetsDone: Int get() = setsDone.sum()
 
+    /**
+     * The leg being raced: the one after everything closed. The last leg holds
+     * once it is closed, so a finished sim has somewhere to sit.
+     */
+    val legIndex: Int get() = legSeconds.size.coerceAtMost(LEGS.lastIndex)
+
     val leg get() = LEGS[legIndex]
+
+    /** True once every leg has been closed. */
+    val raceFinished: Boolean get() = legSeconds.size == LEGS.size
+
+    /** The clock on the leg in progress — the race clock less everything banked. */
+    val currentLegSeconds: Int get() = raceSeconds - legSeconds.sum()
+
+    /** The clock on the kilometre in progress. */
+    val currentLapSeconds: Int get() = runSeconds - runSplits.sum()
+
+    /** Average kilometre so far. Null until one has been closed. */
+    val runPace: String?
+        get() = if (runSplits.isEmpty()) null else formatMinutes(runSplits.sum() / runSplits.size)
 
     /** Stations reached so far — the number the race ring and dial show. */
     val stationNumber: Int
@@ -200,6 +220,8 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         setsDone.clear()
         setsDone.addAll(List(session.exercises.size) { 0 })
         startSession()
+        startRun()
+        startRace()
         go(
             when (session.kind) {
                 SessionKind.RUN -> Screen.Run
@@ -245,15 +267,39 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         raceOn = !raceOn
     }
 
+    /** Closes the kilometre in progress at whatever the clock says it took. */
+    fun lap() {
+        val lap = currentLapSeconds
+        // A lap of nothing is a double tap, not a kilometre.
+        if (lap <= 0) return
+        runSplits.add(lap)
+    }
+
+    /** Clears the run board. The clock starts at zero and stopped. */
+    private fun startRun() {
+        runOn = false
+        runSeconds = 0
+        runSplits.clear()
+    }
+
+    /**
+     * Closes the leg being raced and moves on. There is nothing to close on a
+     * sim that has not started, and nothing to move on to once every leg is in.
+     */
     fun nextLeg() {
-        legIndex = (legIndex + 1).coerceAtMost(LEGS.lastIndex)
+        if (raceFinished) return
+        val elapsed = currentLegSeconds
+        if (elapsed <= 0) return
+        legSeconds.add(elapsed)
+        if (raceFinished) raceOn = false
     }
 
-    fun toggleMeal(key: String) {
-        if (!mealsLogged.remove(key)) mealsLogged.add(key)
+    /** Clears the sim board, on the same terms as the run's. */
+    private fun startRace() {
+        raceOn = false
+        raceSeconds = 0
+        legSeconds.clear()
     }
-
-    fun isMealLogged(key: String) = key in mealsLogged
 
     /** One second of wall clock: rest counts down, the timers count up. */
     fun tick() {
@@ -262,19 +308,5 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         if (runOn) runSeconds++
         if (raceOn) raceSeconds++
     }
-
-    init {
-        require(MEALS.map { it.key }.containsAll(mealsLogged)) { "unknown meal key" }
-    }
 }
 
-/** m:ss — the design's short clock. */
-fun formatMinutes(total: Int): String = "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
-
-/** h:mm:ss — the race clock. */
-fun formatHours(total: Int): String {
-    val h = total / 3600
-    val m = (total % 3600) / 60
-    val s = total % 60
-    return "$h:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
-}

@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.repsrox.app.data.Session
 import com.repsrox.app.data.detail
+import com.repsrox.app.data.formatMinutes
 import com.repsrox.app.data.formatVolume
 import com.repsrox.app.data.topSet
 import com.repsrox.app.data.totalSets
@@ -35,7 +36,6 @@ import com.repsrox.app.ui.components.QuietAction
 import com.repsrox.app.ui.components.RuledRow
 import com.repsrox.app.ui.components.SectionLabel
 import com.repsrox.app.ui.components.StatBlock
-import com.repsrox.app.ui.formatMinutes
 import com.repsrox.app.ui.theme.Accent
 import com.repsrox.app.ui.theme.AccentLineFaint
 import com.repsrox.app.ui.theme.AccentLineSoft

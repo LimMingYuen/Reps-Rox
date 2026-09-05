@@ -23,6 +23,10 @@ private val PLAN_KEY = stringPreferencesKey("sessions")
  * by `;`, each `name~target~sets`, each set `repsxkg`:
  *
  *     a1|2026-08-15|STRENGTH|0|Lower push|~|Back squat~5 × 5 · 120 kg~5x120/5x120
+ *
+ * Nothing is seeded. A week nobody has written reads as an empty plan, which
+ * the week and today screens both say plainly — a block the athlete did not
+ * write is not a block they are following.
  */
 class PlanRepository(context: Context) {
 
@@ -52,14 +56,12 @@ class PlanRepository(context: Context) {
 
     private suspend fun update(transform: (List<PlannedSession>) -> List<PlannedSession>) {
         store.edit { prefs ->
-            // Reading through plan() is what makes the seed durable: the first write
-            // folds it into the stored plan, so it stops being a fallback.
             prefs[PLAN_KEY] = encodePlan(transform(prefs.plan()).sortedBy { it.date })
         }
     }
 
-    /** An absent key means nothing has ever been written — the one case the seed covers. */
-    private fun Preferences.plan(): List<PlannedSession> = this[PLAN_KEY]?.let(::decodePlan) ?: SEED
+    /** Nothing has ever been written is an empty plan, not a seeded one. */
+    private fun Preferences.plan(): List<PlannedSession> = this[PLAN_KEY]?.let(::decodePlan).orEmpty()
 }
 
 // ── Record format ───────────────────────────────────────────────────────────
@@ -142,31 +144,4 @@ private fun decodeSet(raw: String): WorkSet? {
     val reps = fields[0].toIntOrNull() ?: return null
     val unit = if (fields.getOrNull(2) == "m") SetUnit.METRES else SetUnit.REPS
     return WorkSet(reps, fields[1], unit)
-}
-
-// ── Seed ────────────────────────────────────────────────────────────────────
-
-/**
- * A first-run plan, so the week opens with the shape the design shows instead of
- * an empty list. It is the design's own week laid onto the week the app is first
- * opened in, so it reads as one whole week rather than straddling two; the first
- * session saved folds it onto disk.
- * Delete this and the fallback in [PlanRepository] to ship an empty plan.
- */
-private val SEED: List<PlannedSession> by lazy {
-    val today = LocalDate.now()
-    val monday = today.weekStart()
-    WEEK_TEMPLATE.mapIndexed { index, seed ->
-        val date = monday.plusDays((seed.dayOfWeek.value - 1).toLong())
-        PlannedSession(
-            id = "seed-$index",
-            date = date,
-            name = seed.name,
-            kind = seed.kind,
-            note = seed.note,
-            exercises = seed.exercises,
-            // The days already behind you read as banked; the rest are still ahead.
-            done = date.isBefore(today) && seed.kind != SessionKind.REST,
-        )
-    }
 }

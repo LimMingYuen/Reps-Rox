@@ -20,6 +20,10 @@ private val LOG_KEY = stringPreferencesKey("weigh_ins")
  * rather than in a database that would earn nothing here.
  *
  * A record is `date|kg`: `2026-08-15|81.4`.
+ *
+ * Nothing is seeded. An install that has weighed in nowhere reads as an empty
+ * log, which the Body screen shows as its empty state rather than as a trend
+ * drawn through numbers nobody stood on a scale for.
  */
 class WeightRepository(context: Context) {
 
@@ -37,14 +41,12 @@ class WeightRepository(context: Context) {
 
     private suspend fun update(transform: (List<WeighIn>) -> List<WeighIn>) {
         store.edit { prefs ->
-            // Reading through log() here is what makes the seed durable: the first
-            // write folds it into the stored log, so it stops being a fallback.
             prefs[LOG_KEY] = encodeLog(transform(prefs.log()).sortedBy { it.date })
         }
     }
 
-    /** An absent key means nothing has ever been written, which is the one case the seed covers. */
-    private fun Preferences.log(): List<WeighIn> = this[LOG_KEY]?.let(::decodeLog) ?: SEED
+    /** Nothing has ever been written is an empty log, not a seeded one. */
+    private fun Preferences.log(): List<WeighIn> = this[LOG_KEY]?.let(::decodeLog).orEmpty()
 }
 
 /** Puts [entry] into [log], replacing the weigh-in already held for that date. */
@@ -70,17 +72,3 @@ internal fun decodeLog(raw: String): List<WeighIn> = raw.lineSequence()
     }
     .sortedBy { it.date }
     .toList()
-
-/**
- * A first-run log, so the screen opens with the shape the design shows instead
- * of an empty chart. It is the design's own series, hung off the install date
- * as twelve weekly weigh-ins; the first real entry logged replaces it on disk.
- * Delete this and the fallback in [WeightRepository] to ship an empty tracker.
- */
-private val SEED: List<WeighIn> by lazy {
-    val today = LocalDate.now()
-    val last = WEIGHT_SERIES.lastIndex
-    WEIGHT_SERIES.mapIndexed { index, kg ->
-        WeighIn(date = today.minusWeeks((last - index).toLong()), kg = kg)
-    }
-}
