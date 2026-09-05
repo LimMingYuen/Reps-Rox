@@ -2,6 +2,7 @@ package com.repsrox.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,12 +29,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.repsrox.app.data.PR_STATIONS
 import com.repsrox.app.data.PersonalRecord
 import com.repsrox.app.data.Race
 import com.repsrox.app.data.countdown
 import com.repsrox.app.data.dateLabel
 import com.repsrox.app.data.formatKilos
+import com.repsrox.app.data.initialsOf
 import com.repsrox.app.ui.ProfileState
 import com.repsrox.app.ui.ProfileViewModel
 import com.repsrox.app.ui.components.Panel
@@ -55,6 +56,7 @@ import com.repsrox.app.ui.theme.oswald
 fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
     var booking by remember { mutableStateOf(false) }
+    var naming by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -66,7 +68,7 @@ fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
         // takes rather than saying "no race booked" over a race that is booked.
         val profile = state
         if (profile != null) {
-            Identity(profile)
+            Identity(profile, onEdit = { naming = true })
 
             RaceCard(profile.race, onEdit = { booking = true })
 
@@ -76,8 +78,22 @@ fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
                 empty = "Nothing banked yet. Work a strength session through the " +
                     "tracker and the heaviest set of every lift lands here.",
             )
-            RecordList("Station bests", PR_STATIONS, empty = null)
         }
+    }
+
+    if (naming) {
+        NameDialog(
+            name = state?.name,
+            onDismiss = { naming = false },
+            onSave = { name ->
+                viewModel.rename(name)
+                naming = false
+            },
+            onClear = {
+                viewModel.rename("")
+                naming = false
+            },
+        )
     }
 
     if (booking) {
@@ -98,11 +114,15 @@ fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
 
 /** The name, the initials, and the one line that sums the training up. */
 @Composable
-private fun Identity(profile: ProfileState) {
+private fun Identity(profile: ProfileState, onEdit: () -> Unit) {
     val weight = profile.latestKg?.let { "${formatKilos(it)} kg · " }.orEmpty()
     val race = profile.race?.let { "race ${it.countdown()}" } ?: "no race booked"
 
     Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onEdit)
+            .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(13.dp),
     ) {
@@ -113,12 +133,19 @@ private fun Identity(profile: ProfileState) {
                 .border(1.dp, BorderChip, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Text("ML", color = Accent, style = oswald(17f), textAlign = TextAlign.Center)
+            Text(
+                initialsOf(profile.name.orEmpty()),
+                color = Accent,
+                style = oswald(17f),
+                textAlign = TextAlign.Center,
+            )
         }
         Column {
+            // An install nobody has named says so and offers the way to fix it,
+            // rather than carrying a name it was shipped with.
             Text(
-                "MING LIM",
-                color = TextPrimary,
+                profile.name?.uppercase() ?: "ADD YOUR NAME",
+                color = if (profile.name == null) TextSubtle else TextPrimary,
                 style = oswald(17f, FontWeight.W500, lineHeight = 1.2f, tracking = 0.03f),
             )
             Text(
@@ -177,10 +204,10 @@ private fun RaceCard(race: Race?, onEdit: () -> Unit) {
 
 /** A board of bests, or the line that says why it is empty. */
 @Composable
-private fun RecordList(title: String, records: List<PersonalRecord>, empty: String?) {
+private fun RecordList(title: String, records: List<PersonalRecord>, empty: String) {
     Column {
         SectionLabel(title, modifier = Modifier.padding(bottom = 4.dp))
-        if (records.isEmpty() && empty != null) {
+        if (records.isEmpty()) {
             Text(
                 empty,
                 color = TextSubtle,

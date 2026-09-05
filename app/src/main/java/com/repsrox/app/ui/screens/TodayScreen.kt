@@ -30,6 +30,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.repsrox.app.data.FuelSummary
 import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.SessionKind
+import com.repsrox.app.data.WeekLoad
 import com.repsrox.app.data.dayLabel
 import com.repsrox.app.data.formatKcal
 import com.repsrox.app.data.formatKilos
@@ -43,6 +44,7 @@ import com.repsrox.app.data.targetKcal
 import com.repsrox.app.data.totalSets
 import com.repsrox.app.data.volumeKg
 import com.repsrox.app.data.weekDates
+import com.repsrox.app.data.weekLoad
 import com.repsrox.app.data.weekStart
 import com.repsrox.app.ui.BodyViewModel
 import com.repsrox.app.ui.FuelViewModel
@@ -83,6 +85,7 @@ fun TodayScreen(
         ?.let { entries -> remember(entries) { summarise(entries) } }
 
     val plan = planViewModel.sessions.collectAsState().value.orEmpty()
+    val bankedSessions = viewModel.bankedSessions.collectAsState().value
     val today = remember { LocalDate.now() }
     // A rest day is not something to start, so the card looks past it.
     val todaySession = plan.firstOrNull { it.date == today && it.kind != SessionKind.REST }
@@ -142,11 +145,17 @@ fun TodayScreen(
                     modifier = Modifier.padding(top = 3.dp),
                 )
             }
-            Tile(label = "7-day load", modifier = Modifier.weight(1f)) {
-                Text("612", color = TextPrimary, style = oswald(22f, lineHeight = 1.2f))
+            val load = bankedSessions?.let { log -> remember(log, today) { weekLoad(log, today) } }
+            Tile(label = "Last 7 days", modifier = Modifier.weight(1f)) {
                 Text(
-                    "on plan",
-                    color = TextMeta,
+                    load?.sessions?.toString() ?: "—",
+                    color = TextPrimary,
+                    style = oswald(22f, lineHeight = 1.2f),
+                )
+                Text(
+                    // Still reading off disk: a neutral caption over a claim.
+                    load?.caption() ?: "sessions",
+                    color = if (load != null && load.volumeKg > 0f) Accent else TextMeta,
                     style = inter(11f, lineHeight = 1f),
                     modifier = Modifier.padding(top = 3.dp),
                 )
@@ -171,7 +180,7 @@ fun TodayScreen(
 
         Column(Modifier.padding(top = 2.dp)) {
             SectionLabel("Last sessions", modifier = Modifier.padding(bottom = 9.dp))
-            val banked = viewModel.bankedSessions.collectAsState().value
+            val banked = bankedSessions
             when {
                 banked == null -> Unit
                 banked.isEmpty() -> Text(
@@ -206,6 +215,20 @@ fun TodayScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * The tile's second line. Tonnage rides along as detail rather than leading,
+ * since a week of runs and station work moves no barbell and would otherwise
+ * read as an empty week.
+ */
+private fun WeekLoad.caption(): String {
+    val noun = if (sessions == 1) "session" else "sessions"
+    return when {
+        sessions == 0 -> "bank a session"
+        volumeKg <= 0f -> noun
+        else -> "$noun · ${formatVolume(volumeKg)}"
     }
 }
 

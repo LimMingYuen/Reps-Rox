@@ -77,9 +77,13 @@ class WeightSummaryTest {
 
     private val today = LocalDate.of(2026, 8, 15)
 
-    /** Twelve weekly weigh-ins ending today — the shape a fresh install starts with. */
-    private val weekly = WEIGHT_SERIES.mapIndexed { index, kg ->
-        WeighIn(today.minusWeeks((WEIGHT_SERIES.lastIndex - index).toLong()), kg)
+    /** A twelve-week cut, one weigh-in a week, ending today. */
+    private val series = listOf(
+        84.2f, 84.0f, 83.5f, 83.6f, 83.1f, 82.8f, 82.9f, 82.4f, 82.1f, 81.9f, 81.6f, 81.4f,
+    )
+
+    private val weekly = series.mapIndexed { index, kg ->
+        WeighIn(today.minusWeeks((series.lastIndex - index).toLong()), kg)
     }
 
     @Test

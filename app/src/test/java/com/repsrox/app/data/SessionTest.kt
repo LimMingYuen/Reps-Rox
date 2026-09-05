@@ -168,3 +168,65 @@ class SessionDayLabelTest {
         assertEquals(today, bankedOn(today).day(zone))
     }
 }
+
+class WeekLoadTest {
+
+    private val today = LocalDate.of(2026, 8, 15)
+    private val zone = ZoneId.of("UTC")
+
+    private fun session(day: LocalDate, vararg sets: WorkSet) = Session(
+        finishedAt = day.atStartOfDay(zone).toInstant().plusSeconds(12 * 3600),
+        name = "Session",
+        seconds = 3492,
+        exercises = listOf(LoggedExercise("Back squat", sets.toList())),
+    )
+
+    private fun reps(reps: Int, kg: String) = WorkSet(reps, kg, SetUnit.REPS)
+    private fun metres(m: Int, kg: String) = WorkSet(m, kg, SetUnit.METRES)
+
+    @Test
+    fun `counts the sessions and tonnage of the seven days ending today`() {
+        val load = weekLoad(
+            listOf(
+                session(today, reps(5, "120")),
+                session(today.minusDays(6), reps(5, "100")),
+            ),
+            today,
+            zone,
+        )
+
+        assertEquals(2, load.sessions)
+        assertEquals(1100f, load.volumeKg, 0.01f)
+    }
+
+    @Test
+    fun `the seventh day back is outside the window`() {
+        val load = weekLoad(listOf(session(today.minusDays(7), reps(5, "120"))), today, zone)
+
+        assertEquals(0, load.sessions)
+        assertEquals(0f, load.volumeKg, 0.01f)
+    }
+
+    @Test
+    fun `a session dated ahead of today is not this week's work`() {
+        val load = weekLoad(listOf(session(today.plusDays(1), reps(5, "120"))), today, zone)
+
+        assertEquals(0, load.sessions)
+    }
+
+    @Test
+    fun `a week of metre-logged work counts as sessions but moves no tonnage`() {
+        val load = weekLoad(listOf(session(today, metres(25, "150"))), today, zone)
+
+        assertEquals(1, load.sessions)
+        assertEquals(0f, load.volumeKg, 0.01f)
+    }
+
+    @Test
+    fun `nothing banked is an empty week rather than no answer`() {
+        val load = weekLoad(emptyList(), today, zone)
+
+        assertEquals(0, load.sessions)
+        assertEquals(0f, load.volumeKg, 0.01f)
+    }
+}

@@ -17,9 +17,6 @@ val AccentLine = Color(0x80FF3B14) // rgba(255,59,20,.50)
 val AccentLineSoft = Color(0x59FF3B14) // rgba(255,59,20,.35)
 val AccentLineFaint = Color(0x4DFF3B14) // rgba(255,59,20,.30)
 val AccentRingNow = Color(0x66FF3B14) // rgba(255,59,20,.40)
-val AccentZ3 = Color(0x80FF3B14)
-val AccentZ4 = Color(0x47FF3B14)
-val AccentZ5 = Color(0x29FF3B14)
 val AccentArea = Color(0x24FF3B14) // weight chart fill
 
 /** Grounds. */
@@ -47,4 +44,3 @@ val TrackFaint = Color(0x14E9E9ED) // .08 — split bars
 val TrackSoft = Color(0x17E9E9ED) // .09 — macro bars
 val Track = Color(0x1AE9E9ED) // .10 — protein bar
 val RingTodo = Color(0x1FE9E9ED) // .12
-val ZoneIdle = Color(0x2EE9E9ED) // .18

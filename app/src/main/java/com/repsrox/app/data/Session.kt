@@ -33,6 +33,31 @@ val Session.totalSets: Int get() = exercises.sumOf { it.sets.size }
 val Session.volumeKg: Float
     get() = exercises.sumOf { exercise -> exercise.sets.sumOf { it.volumeKg.toDouble() } }.toFloat()
 
+/** What a rolling week of banked work amounts to. */
+data class WeekLoad(val sessions: Int, val volumeKg: Float)
+
+/**
+ * The work banked in the seven days ending today.
+ *
+ * The session count leads because it is the only figure that counts a whole
+ * hybrid week. Tonnage passes over every run, and over the sled and the carries
+ * that [Session.volumeKg] leaves out, so a week spent running would read as
+ * nothing moved — true of the barbell, and useless as a week's work.
+ */
+fun weekLoad(
+    sessions: List<Session>,
+    today: LocalDate = LocalDate.now(),
+    zone: ZoneId = ZoneId.systemDefault(),
+): WeekLoad {
+    val earliest = today.minusDays(6)
+    // A session dated ahead of today is a clock that moved, not work done.
+    val week = sessions.filter { session ->
+        val day = session.day(zone)
+        !day.isBefore(earliest) && !day.isAfter(today)
+    }
+    return WeekLoad(week.size, week.sumOf { it.volumeKg.toDouble() }.toFloat())
+}
+
 /** The heaviest loaded set of the session, which is the one worth calling out. */
 data class TopSet(val exercise: String, val set: WorkSet)
 
