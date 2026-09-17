@@ -1,11 +1,12 @@
 package com.repsrox.app.data
 
+import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 
 /**
- * A month of what was actually done, as CSV — one file each for training, meals
- * and races, so each opens as its own sheet. Unlike [exportPlan] nothing here is
+ * A month of what was actually done, as CSV — one file each for training, meals,
+ * races and weight, so each opens as its own sheet. Unlike [exportPlan] nothing here is
  * read back in: this is the record going out, not a plan coming round again.
  */
 data class MonthExport(val month: YearMonth, val files: List<CsvFile>) {
@@ -20,6 +21,7 @@ fun exportMonth(
     sessions: List<Session>,
     meals: List<Meal>,
     races: List<RaceResult>,
+    weighIns: List<WeighIn> = emptyList(),
     zone: ZoneId = ZoneId.systemDefault(),
 ): MonthExport = MonthExport(
     month,
@@ -27,8 +29,30 @@ fun exportMonth(
         trainingCsv(month, sessions, zone),
         mealsCsv(month, meals),
         racesCsv(month, races, zone),
+        weightCsv(month, weighIns),
     ),
 )
+
+/**
+ * Whether [month] can go out yet. Exporting a month clears it from the app, so a
+ * month still running stays shut until the first of the next one — otherwise the
+ * days left in it would be banked into a month already sent.
+ */
+fun canExport(month: YearMonth, today: LocalDate = LocalDate.now()): Boolean = month < YearMonth.from(today)
+
+/** The day [month] opens for export: the first of the month after it. */
+fun exportOpens(month: YearMonth): LocalDate = month.plusMonths(1).atDay(1)
+
+// What each log keeps once [month] has been exported — the same cut the sheets above make, turned over.
+
+internal fun sessionsWithout(month: YearMonth, sessions: List<Session>, zone: ZoneId): List<Session> =
+    sessions.filterNot { YearMonth.from(it.day(zone)) == month }
+
+internal fun mealsWithout(month: YearMonth, meals: List<Meal>): List<Meal> =
+    meals.filterNot { YearMonth.from(it.date) == month }
+
+internal fun racesWithout(month: YearMonth, races: List<RaceResult>, zone: ZoneId): List<RaceResult> =
+    races.filterNot { YearMonth.from(it.finishedAt.atZone(zone).toLocalDate()) == month }
 
 /** A row a set, so a sheet can total volume or chart a lift without unpicking a cell. */
 internal fun trainingCsv(month: YearMonth, sessions: List<Session>, zone: ZoneId): CsvFile {
@@ -104,6 +128,19 @@ internal fun racesCsv(month: YearMonth, races: List<RaceResult>, zone: ZoneId): 
         listOf("Date", "Time", "Complete") + LEGS.map { "${it.tag} ${it.name}" },
         rows,
     )
+}
+
+/**
+ * A row a weigh-in. The one sheet that is a copy rather than a handover: the Body
+ * screen draws its trend across twelve weeks, so the log stays whole when a month
+ * is cleared.
+ */
+internal fun weightCsv(month: YearMonth, weighIns: List<WeighIn>): CsvFile {
+    val rows = weighIns
+        .filter { YearMonth.from(it.date) == month }
+        .sortedBy { it.date }
+        .map { listOf(it.date.toString(), formatKilos(it.kg)) }
+    return csvFile("Weight", "weight", month, listOf("Date", "Weight kg"), rows)
 }
 
 private fun csvFile(

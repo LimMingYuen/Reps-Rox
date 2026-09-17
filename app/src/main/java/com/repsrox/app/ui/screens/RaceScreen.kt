@@ -1,5 +1,6 @@
 package com.repsrox.app.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -46,6 +47,7 @@ import com.repsrox.app.ui.theme.Accent
 import com.repsrox.app.ui.theme.AccentLine
 import com.repsrox.app.ui.theme.AccentTint
 import com.repsrox.app.ui.theme.TextDim
+import com.repsrox.app.ui.theme.TextFaint
 import com.repsrox.app.ui.theme.TextMeta
 import com.repsrox.app.ui.theme.TextMuted
 import com.repsrox.app.ui.theme.TextPrimary
@@ -76,6 +78,7 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
     val stationNumber = viewModel.stationNumber
     val finished = viewModel.raceFinished
     val raced = viewModel.racedSims.collectAsState().value.orEmpty()
+    var showingPast by remember { mutableStateOf(false) }
     var clearing by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<RaceResult?>(null) }
 
@@ -194,59 +197,69 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
         }
 
         Column {
-            SectionLabel("Splits", modifier = Modifier.padding(bottom = 4.dp))
-            LEGS.forEachIndexed { index, item ->
-                val split = closed.getOrNull(index)
-                val past = split != null
-                val now = index == viewModel.legIndex && split == null
-                val delta = split?.let { legDelta(index, it) }
-                val ink = when {
-                    now -> Accent
-                    past -> TextPrimary
-                    else -> TextDim
-                }
-                RuledRow(verticalPadding = 9.dp) {
-                    Text(
-                        item.tag,
-                        color = when {
-                            now -> Accent
-                            past -> TextMuted
-                            else -> TextDim
-                        },
-                        style = oswald(10f, tracking = 0.06f),
-                        modifier = Modifier.width(38.dp),
-                    )
-                    Text(
-                        item.name,
-                        color = ink,
-                        style = inter(12f, FontWeight.W500, lineHeight = 1.3f),
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        when {
-                            split != null -> formatMinutes(split)
-                            now && viewModel.raceSeconds > 0 -> "running"
-                            else -> "—"
-                        },
-                        color = ink,
-                        style = mono(12f, FontWeight.W500),
-                    )
-                    Text(
-                        delta?.let(::formatDelta).orEmpty(),
-                        // Under target reads as a win, so it takes the accent.
-                        color = if (delta != null && delta < 0) Accent else TextMuted,
-                        style = mono(10.5f),
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.width(38.dp),
-                    )
-                }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                modifier = Modifier.padding(bottom = 4.dp),
+            ) {
+                RaceTab("Splits", selected = !showingPast) { showingPast = false }
+                RaceTab("Past races", selected = showingPast) { showingPast = true }
             }
-        }
-
-        if (raced.isNotEmpty()) {
-            val best = bestRace(raced)
-            Column {
-                SectionLabel("Past races", modifier = Modifier.padding(bottom = 4.dp))
+            if (!showingPast) {
+                LEGS.forEachIndexed { index, item ->
+                    val split = closed.getOrNull(index)
+                    val past = split != null
+                    val now = index == viewModel.legIndex && split == null
+                    val delta = split?.let { legDelta(index, it) }
+                    val ink = when {
+                        now -> Accent
+                        past -> TextPrimary
+                        else -> TextDim
+                    }
+                    RuledRow(verticalPadding = 9.dp) {
+                        Text(
+                            item.tag,
+                            color = when {
+                                now -> Accent
+                                past -> TextMuted
+                                else -> TextDim
+                            },
+                            style = oswald(10f, tracking = 0.06f),
+                            modifier = Modifier.width(38.dp),
+                        )
+                        Text(
+                            item.name,
+                            color = ink,
+                            style = inter(12f, FontWeight.W500, lineHeight = 1.3f),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            when {
+                                split != null -> formatMinutes(split)
+                                now && viewModel.raceSeconds > 0 -> "running"
+                                else -> "—"
+                            },
+                            color = ink,
+                            style = mono(12f, FontWeight.W500),
+                        )
+                        Text(
+                            delta?.let(::formatDelta).orEmpty(),
+                            // Under target reads as a win, so it takes the accent.
+                            color = if (delta != null && delta < 0) Accent else TextMuted,
+                            style = mono(10.5f),
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.width(38.dp),
+                        )
+                    }
+                }
+            } else if (raced.isEmpty()) {
+                Text(
+                    "No races in the log yet. Finish one and it lands here.",
+                    color = TextMeta,
+                    style = inter(11.5f),
+                    modifier = Modifier.padding(vertical = 12.dp),
+                )
+            } else {
+                val best = bestRace(raced)
                 raced.forEach { result ->
                     RuledRow(verticalPadding = 9.dp, onClick = { removing = result }) {
                         Text(
@@ -305,6 +318,18 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
             },
         )
     }
+}
+
+/** One of the two headings over the board; the accent marks the list on show. */
+@Composable
+private fun RaceTab(label: String, selected: Boolean, onClick: () -> Unit) {
+    SectionLabel(
+        label,
+        color = if (selected) Accent else TextFaint,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+    )
 }
 
 @Composable

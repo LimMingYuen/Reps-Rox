@@ -110,6 +110,105 @@ private fun macro(label: String, banked: Int, target: Int, unit: String, accente
 /** Thousands are grouped, the way a calorie figure is read: "2,540". */
 fun formatKcal(value: Int): String = String.format(Locale.US, "%,d", value)
 
+// ── The rolling meal week ───────────────────────────────────────────────────
+
+/**
+ * Eating repeats the way training does: an imported document's meal days are read
+ * as days of the week and printed onto every day from today on that holds nothing
+ * of its own. Printed days are not written to disk, so a new document changes every
+ * day ahead at once.
+ *
+ * Meals roll a day at a time rather than a week at a time — checking breakfast in
+ * on Monday should not freeze what Thursday is going to be. The first change to a
+ * printed day writes that day down (see [MealRepository]), and it is its own
+ * business from then on, even if every meal on it is later deleted.
+ */
+const val ROLLING_MEAL_PREFIX = "rolling-meal"
+
+/** The id a meal printed from the rolling week carries — the day it fell on, and where in it. */
+fun rollingMealId(date: LocalDate, index: Int): String = "$ROLLING_MEAL_PREFIX-$date-$index"
+
+/** The day a printed meal belongs to, or null for a meal that was entered by hand. */
+fun rollingMealDay(id: String): LocalDate? {
+    if (!id.startsWith("$ROLLING_MEAL_PREFIX-")) return null
+    val date = id.removePrefix("$ROLLING_MEAL_PREFIX-").substringBeforeLast("-")
+    return runCatching { LocalDate.parse(date) }.getOrNull()
+}
+
+/**
+ * A document's meal days as a week worth repeating. The meals keep a date only to
+ * say which day of the week they fall on. A document longer than a week names the
+ * same weekday twice; the earlier day wins, as it does for sessions.
+ */
+fun mealWeek(days: Map<LocalDate, List<Meal>>): List<Meal> =
+    days.toSortedMap().entries
+        .distinctBy { it.key.dayOfWeek }
+        .flatMap { (date, meals) -> meals.map { it.copy(date = date, logged = false) } }
+
+/** What [rolling] puts on [date]: that weekday's meals, none of them eaten yet. */
+fun printMealDay(rolling: List<Meal>, date: LocalDate): List<Meal> =
+    rolling.filter { it.date.dayOfWeek == date.dayOfWeek }
+        .mapIndexed { index, meal -> meal.copy(id = rollingMealId(date, index), date = date, logged = false) }
+
+/**
+ * The meals as the app reads them: what is stored, plus [rolling] printed onto
+ * every day from [today] on that holds nothing of its own and was never
+ * [written] down. Days behind you are left as they were — a plan says what you
+ * will eat, and cannot say what you ate.
+ */
+fun projectMeals(
+    stored: List<Meal>,
+    rolling: List<Meal>,
+    written: Set<LocalDate>,
+    today: LocalDate,
+    weeks: Int = ROLLING_HORIZON_WEEKS,
+): List<Meal> {
+    if (rolling.isEmpty()) return stored
+    val spokenFor = stored.mapTo(written.toMutableSet()) { it.date }
+    val printed = generateSequence(today) { it.plusDays(1) }
+        .takeWhile { it.isBefore(today.weekStart().plusWeeks(weeks.toLong())) }
+        .filterNot { it in spokenFor }
+        .flatMap { printMealDay(rolling, it) }
+    return (stored + printed).sortedBy { it.date }
+}
+
+/**
+ * [date] written down as the rolling week currently prints it, or null when there
+ * is nothing to write: the day is behind you, already holds meals of its own, was
+ * written down before, or the week has nothing for it.
+ */
+fun writeDownMealDay(
+    stored: List<Meal>,
+    rolling: List<Meal>,
+    written: Set<LocalDate>,
+    date: LocalDate,
+    today: LocalDate,
+): List<Meal>? {
+    if (date.isBefore(today) || date in written || stored.any { it.date == date }) return null
+    val printed = printMealDay(rolling, date).ifEmpty { return null }
+    return (stored + printed).sortedBy { it.date }
+}
+
+/**
+ * The days an imported document lands on: the dates it names, plus its weekday's
+ * meals on every day from [today] on that was already written down — those days
+ * no longer print from the plan, and a new plan that changed every day but the
+ * ones you had touched would read as not having landed. A day the document names
+ * outright is never overwritten by a weekday's copy.
+ */
+fun importMealDays(
+    days: Map<LocalDate, List<Meal>>,
+    stored: List<Meal>,
+    written: Set<LocalDate>,
+    today: LocalDate,
+): Map<LocalDate, List<Meal>> {
+    val rolling = mealWeek(days)
+    val carried = stored.mapTo(written.toMutableSet()) { it.date }
+        .filter { !it.isBefore(today) && it !in days.keys }
+        .mapNotNull { date -> printMealDay(rolling, date).takeIf { it.isNotEmpty() }?.let { date to it } }
+    return days + carried
+}
+
 /**
  * Lays imported days over [current]. A date the document carries replaces that
  * date's meals outright; every other date is left alone, so importing one day

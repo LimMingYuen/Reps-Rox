@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Restaurant
@@ -22,9 +23,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.repsrox.app.data.Session
+import com.repsrox.app.data.TARGET_PROTEIN_G
+import com.repsrox.app.data.TRAINING_KCAL
 import com.repsrox.app.data.detail
+import com.repsrox.app.data.formatKcal
 import com.repsrox.app.data.formatMinutes
 import com.repsrox.app.data.formatVolume
+import com.repsrox.app.data.targetKcal
 import com.repsrox.app.data.topSet
 import com.repsrox.app.data.totalSets
 import com.repsrox.app.data.volumeKg
@@ -71,6 +76,7 @@ fun SummaryScreen(viewModel: RepsRoxViewModel) {
                 session = viewModel.viewedSession
                     ?.let { picked -> sessions!!.firstOrNull { it.finishedAt == picked } }
                     ?: sessions!!.first(),
+                onTrain = { viewModel.go(Screen.Plan) },
                 onDone = { viewModel.go(Screen.Today) },
             )
         }
@@ -79,7 +85,7 @@ fun SummaryScreen(viewModel: RepsRoxViewModel) {
 
 @Composable
 private fun ColumnScope.NothingBanked(onStart: () -> Unit) {
-    Panel {
+    Panel(modifier = Modifier.fillMaxWidth()) {
         Text(
             "No session banked yet.",
             color = TextPrimary,
@@ -94,7 +100,7 @@ private fun ColumnScope.NothingBanked(onStart: () -> Unit) {
         )
     }
     AccentAction(
-        "Start today's session",
+        "Pick a session",
         icon = Icons.Filled.PlayArrow,
         modifier = Modifier.fillMaxWidth(),
         onClick = onStart,
@@ -102,8 +108,13 @@ private fun ColumnScope.NothingBanked(onStart: () -> Unit) {
 }
 
 @Composable
-private fun ColumnScope.Banked(session: Session, onDone: () -> Unit) {
+private fun ColumnScope.Banked(
+    session: Session,
+    onTrain: () -> Unit,
+    onDone: () -> Unit,
+) {
     Panel(
+        modifier = Modifier.fillMaxWidth(),
         borderColor = AccentLineFaint,
         contentPadding = PaddingValues(16.dp),
     ) {
@@ -114,13 +125,10 @@ private fun ColumnScope.Banked(session: Session, onDone: () -> Unit) {
             style = oswald(22f, FontWeight.W500, lineHeight = 1.15f),
             modifier = Modifier.padding(top = 8.dp),
         )
-        Row(
-            Modifier.padding(top = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
-        ) {
-            StatBlock(formatMinutes(session.seconds), "duration", valueSize = 20f)
-            StatBlock(formatVolume(session.volumeKg), "volume", valueSize = 20f)
-            StatBlock("${session.totalSets}", "sets", valueSize = 20f)
+        Row(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+            StatBlock(formatMinutes(session.seconds), "duration", Modifier.weight(1f), valueSize = 20f)
+            StatBlock(formatVolume(session.volumeKg), "volume", Modifier.weight(1f), valueSize = 20f)
+            StatBlock("${session.totalSets}", "sets", Modifier.weight(1f), valueSize = 20f)
         }
     }
 
@@ -129,6 +137,7 @@ private fun ColumnScope.Banked(session: Session, onDone: () -> Unit) {
     // true of every session, and no claim the log can't back.
     session.topSet?.let { top ->
         Panel(
+            modifier = Modifier.fillMaxWidth(),
             background = AccentWash,
             borderColor = AccentLineSoft,
             contentPadding = PaddingValues(13.dp),
@@ -175,7 +184,10 @@ private fun ColumnScope.Banked(session: Session, onDone: () -> Unit) {
         }
     }
 
-    Panel(contentPadding = PaddingValues(13.dp)) {
+    Panel(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(13.dp),
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -187,13 +199,20 @@ private fun ColumnScope.Banked(session: Session, onDone: () -> Unit) {
                 modifier = Modifier.size(19.dp),
             )
             Text(
-                "Today's target went up 320 kcal and protein to 165 g.",
+                "Training day: calorie target up $TRAINING_KCAL kcal to " +
+                    "${formatKcal(targetKcal(training = true))}. Protein holds at $TARGET_PROTEIN_G g.",
                 color = TextSubtle,
                 style = inter(11.5f, lineHeight = 1.5f),
             )
         }
     }
 
+    AccentAction(
+        "Back to Train",
+        icon = Icons.AutoMirrored.Filled.ArrowBack,
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onTrain,
+    )
     QuietAction(
         "Done",
         modifier = Modifier.fillMaxWidth(),

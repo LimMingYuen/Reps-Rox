@@ -29,6 +29,10 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
     val meals: StateFlow<List<Meal>?> = repository.meals
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** Whether a meal week is repeating — a document of meals alone still needs stopping. */
+    val repeating: StateFlow<Boolean> = repository.repeating
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     /**
      * The day being looked at. Held here rather than in the screen because the
      * app throws its screens away on every switch, and a day you stepped to is
@@ -54,10 +58,17 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.setLogged(meal.id, !meal.logged) }
     }
 
-    /** Lays an imported document's meal days down, leaving every other day alone. */
+    /**
+     * Puts an imported document's meals in force. Its days are read as days of the
+     * week, so it feeds every week from this one on — importing once is enough.
+     */
     fun applyImport(parsed: ParsedPlan) {
-        if (parsed.meals.isEmpty()) return
-        viewModelScope.launch { repository.applyDays(parsed.meals) }
+        viewModelScope.launch { repository.applyImport(parsed.meals) }
+    }
+
+    /** Stops repeating the meal week, leaving only the days already written down. */
+    fun clearRollingMeals() {
+        viewModelScope.launch { repository.clearRolling() }
     }
 }
 

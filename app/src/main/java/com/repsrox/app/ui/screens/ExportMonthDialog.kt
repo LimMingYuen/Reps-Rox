@@ -30,6 +30,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.repsrox.app.data.MonthExport
+import com.repsrox.app.data.canExport
+import com.repsrox.app.data.exportOpens
 import com.repsrox.app.data.exportMonth
 import com.repsrox.app.ui.ExportHistory
 import com.repsrox.app.ui.components.AccentAction
@@ -48,6 +50,7 @@ import com.repsrox.app.ui.theme.TextSubtle
 import com.repsrox.app.ui.theme.inter
 import com.repsrox.app.ui.theme.mono
 import java.io.File
+import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
@@ -56,14 +59,21 @@ import java.util.Locale
 private const val EXPORTS_AUTHORITY_SUFFIX = ".exports"
 private const val EXPORTS_DIR = "exports"
 
-/** A month of training, meals and races, sent out as one CSV file each. */
+/**
+ * A month of training, meals and races, sent out as one CSV file each — and then
+ * cleared from the app, so the logs hold only what has not gone out yet. A month
+ * opens once it is over; [onClear] is asked for only after its files were shared.
+ */
 @Composable
-fun ExportMonthDialog(history: ExportHistory, onDismiss: () -> Unit) {
+fun ExportMonthDialog(history: ExportHistory, onClear: (YearMonth) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val thisMonth = remember { YearMonth.now() }
-    var month by remember { mutableStateOf(thisMonth) }
+    // Opens on the newest month that can go out, not the one still running.
+    var month by remember { mutableStateOf(thisMonth.minusMonths(1)) }
+    // The month whose files have been handed to the share sheet and is waiting to be cleared.
+    var shared by remember { mutableStateOf<YearMonth?>(null) }
     val export = remember(month, history) {
-        exportMonth(month, history.sessions, history.meals, history.races)
+        exportMonth(month, history.sessions, history.meals, history.races, history.weighIns)
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -74,14 +84,14 @@ fun ExportMonthDialog(history: ExportHistory, onDismiss: () -> Unit) {
             SectionLabel("Export month")
             Text(
                 "Everything banked in a month — the sets you worked, the meals you " +
-                    "planned and ate, the sims you raced — as one CSV file each, ready " +
+                    "planned and ate, the sims you raced, the weigh-ins you logged — as one CSV file each, ready " +
                     "for a spreadsheet.",
                 color = TextFaint,
                 style = inter(10.5f, lineHeight = 1.5f),
                 modifier = Modifier.padding(top = 6.dp, bottom = 10.dp),
             )
 
-            MonthStepper(month, latest = thisMonth, onChange = { month = it })
+            MonthStepper(month, latest = thisMonth, onChange = { month = it; shared = null })
 
             export.files.forEach { file ->
                 RuledRow(verticalPadding = 10.dp) {
@@ -99,22 +109,52 @@ fun ExportMonthDialog(history: ExportHistory, onDismiss: () -> Unit) {
                 }
             }
 
+            val open = canExport(month)
+            val clearing = shared == month
+            Text(
+                when {
+                    !open -> "${month.label()} is still running. It opens for export on ${exportOpens(month).label()}."
+                    clearing -> "Files saved? Clearing removes ${month.label()} from the app for good — " +
+                        "bests set that month leave the board with it; weigh-ins stay. Keep it if the share was cancelled."
+                    else -> "Once shared, the month can be cleared from the app."
+                },
+                color = if (clearing) TextPrimary else TextFaint,
+                style = inter(10.5f, lineHeight = 1.5f),
+                modifier = Modifier.padding(top = 12.dp),
+            )
+
             Row(
                 Modifier.fillMaxWidth().padding(top = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                QuietAction("Close", modifier = Modifier.weight(1f), onClick = onDismiss)
-                val canShare = !export.isEmpty
-                AccentAction(
-                    "Share",
-                    modifier = Modifier.weight(1f),
-                    borderColor = if (canShare) Accent else BorderAction,
-                    onClick = { if (canShare) shareExport(context, export) },
-                )
+                if (clearing) {
+                    QuietAction("Keep", modifier = Modifier.weight(1f), onClick = { shared = null })
+                    AccentAction(
+                        "Clear month",
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            onClear(month)
+                            shared = null
+                        },
+                    )
+                } else {
+                    QuietAction("Close", modifier = Modifier.weight(1f), onClick = onDismiss)
+                    val canShare = open && !export.isEmpty
+                    AccentAction(
+                        "Share",
+                        modifier = Modifier.weight(1f),
+                        borderColor = if (canShare) Accent else BorderAction,
+                        onClick = { if (canShare && shareExport(context, export)) shared = month },
+                    )
+                }
             }
         }
     }
 }
+
+private fun YearMonth.label() = "${month.getDisplayName(TextStyle.FULL, Locale.US)} $year"
+
+private fun LocalDate.label() = "$dayOfMonth ${month.getDisplayName(TextStyle.FULL, Locale.US)}"
 
 /** Steps a month at a time, and never past this one — there is nothing banked ahead of today. */
 @Composable
@@ -130,7 +170,7 @@ private fun MonthStepper(month: YearMonth, latest: YearMonth, onChange: (YearMon
     ) {
         Step(Icons.Filled.ChevronLeft, "Previous month") { onChange(month.minusMonths(1)) }
         Text(
-            "${month.month.getDisplayName(TextStyle.FULL, Locale.US)} ${month.year}",
+            month.label(),
             color = TextPrimary,
             style = inter(12.5f, FontWeight.W500, lineHeight = 1f),
             textAlign = TextAlign.Center,
@@ -145,9 +185,9 @@ private fun MonthStepper(month: YearMonth, latest: YearMonth, onChange: (YearMon
 /**
  * Writes the sheets that hold anything into the cache and hands them to the
  * share sheet. An empty sheet is left behind: a header over no rows is a file
- * nobody asked to receive.
+ * nobody asked to receive. False when nothing went out.
  */
-private fun shareExport(context: Context, export: MonthExport) {
+private fun shareExport(context: Context, export: MonthExport): Boolean {
     val dir = File(context.cacheDir, EXPORTS_DIR).apply { mkdirs() }
     // Last time's files have been read by whoever they were shared with.
     dir.listFiles()?.forEach { it.delete() }
@@ -156,7 +196,7 @@ private fun shareExport(context: Context, export: MonthExport) {
         val target = File(dir, file.name).apply { writeText(file.text) }
         FileProvider.getUriForFile(context, context.packageName + EXPORTS_AUTHORITY_SUFFIX, target)
     }
-    if (uris.isEmpty()) return
+    if (uris.isEmpty()) return false
 
     val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
         type = "text/csv"
@@ -169,4 +209,5 @@ private fun shareExport(context: Context, export: MonthExport) {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(intent, "Share export"))
+    return true
 }

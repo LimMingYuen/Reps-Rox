@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.MonitorWeight
 import androidx.compose.material.icons.outlined.SportsScore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -54,7 +55,7 @@ import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
 
 @Composable
-fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
+fun ProfileScreen(onBody: () -> Unit, viewModel: ProfileViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
     var booking by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf(false) }
@@ -74,6 +75,8 @@ fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
 
             RaceCard(profile.race, onEdit = { booking = true })
 
+            BodyCard(profile.latestKg, onOpen = onBody)
+
             RecordList(
                 title = "Lifts",
                 records = profile.lifts,
@@ -92,7 +95,7 @@ fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
     if (exporting) {
         // Still reading off disk shows nothing for a frame rather than an export short a sheet.
         viewModel.history.collectAsState().value?.let { history ->
-            ExportMonthDialog(history, onDismiss = { exporting = false })
+            ExportMonthDialog(history, onClear = viewModel::clearMonth, onDismiss = { exporting = false })
         }
     }
 
@@ -210,6 +213,42 @@ private fun RaceCard(race: Race?, onEdit: () -> Unit) {
             }
             Text(
                 (if (race == null) "Add" else "Edit").uppercase(),
+                color = Accent,
+                style = inter(11f, FontWeight.W500, lineHeight = 1f, tracking = 0.06f),
+            )
+        }
+    }
+}
+
+/** The last weigh-in, and the way onto the body screen — which sits under this tab. */
+@Composable
+private fun BodyCard(latestKg: Float?, onOpen: () -> Unit) {
+    Panel(contentPadding = PaddingValues(13.dp), onClick = onOpen) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                Icons.Outlined.MonitorWeight,
+                contentDescription = null,
+                tint = TextSecondary,
+                modifier = Modifier.size(20.dp),
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Bodyweight",
+                    color = TextPrimary,
+                    style = inter(12.5f, FontWeight.W500, lineHeight = 1.3f),
+                )
+                Text(
+                    latestKg?.let { "${formatKilos(it)} kg at the last weigh-in" } ?: "No weigh-in logged yet",
+                    color = TextMeta,
+                    style = inter(11f),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Text(
+                (if (latestKg == null) "Log" else "Open").uppercase(),
                 color = Accent,
                 style = inter(11f, FontWeight.W500, lineHeight = 1f, tracking = 0.06f),
             )

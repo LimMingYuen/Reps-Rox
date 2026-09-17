@@ -9,6 +9,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Instant
+import java.time.YearMonth
+import java.time.ZoneId
 
 private val Context.raceLogStore: DataStore<Preferences> by preferencesDataStore(name = "race_log")
 
@@ -40,6 +42,14 @@ class RaceLogRepository(context: Context) {
         store.edit { prefs ->
             val log = prefs[LOG_KEY]?.let(::decodeRaceLog).orEmpty()
             prefs[LOG_KEY] = encodeRaceLog(log.filterNot { it.finishedAt == finishedAt })
+        }
+    }
+
+    /** Drops [month] from the log once it has been exported. */
+    suspend fun clearMonth(month: YearMonth, zone: ZoneId = ZoneId.systemDefault()) {
+        store.edit { prefs ->
+            val log = prefs[LOG_KEY]?.let(::decodeRaceLog).orEmpty()
+            prefs[LOG_KEY] = encodeRaceLog(racesWithout(month, log, zone))
         }
     }
 }

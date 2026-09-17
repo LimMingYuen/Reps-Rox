@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.ZoneId
 import java.time.LocalDate
 import java.util.Locale
 
@@ -62,6 +63,13 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
 
     var screen by mutableStateOf(Screen.Today)
         private set
+
+    /**
+     * The screen whose link led here. Body, the summary, the builder and the sim
+     * each have more than one way in, so a fixed parent sends Back somewhere the
+     * athlete never was. Null falls back to [parent].
+     */
+    private var cameFrom: Screen? = null
 
     /**
      * The session being tracked, once one has been opened off the plan. Null until
@@ -203,19 +211,36 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         if (destination == Screen.Live && !sessionLive) startSession()
         // Every route into the summary but picking a session shows the newest.
         if (destination == Screen.Summary) viewedSession = null
-        screen = destination
+        moveTo(destination)
+    }
+
+    /** A tap on the bottom bar. Nothing was followed to get there, so Back has nothing to retrace. */
+    fun selectTab(tab: NavTab) {
+        go(tab.root)
+        cameFrom = null
     }
 
     /** Opens one particular banked session, rather than whichever is newest. */
     fun openSession(session: Session) {
         viewedSession = session.finishedAt
-        screen = Screen.Summary
+        moveTo(Screen.Summary)
     }
 
+    /** Back retraces the link that was followed, and only then falls to the screen's fixed parent. */
     fun back(): Boolean {
-        val parent = screen.parent() ?: return false
-        screen = parent
+        val target = cameFrom ?: screen.parent() ?: return false
+        cameFrom = null
+        screen = target
         return true
+    }
+
+    /**
+     * Only a screen that holds links is somewhere to go back to: leaving the
+     * builder or a finished tracker is not a step Back should undo.
+     */
+    private fun moveTo(destination: Screen) {
+        cameFrom = screen.takeIf { it in LINKING_SCREENS && it != destination }
+        screen = destination
     }
 
     /**
@@ -264,6 +289,28 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         return updated
     }
 
+    /**
+     * Takes the exercise at [index] off the open board, and the sets banked into it
+     * with it. Returns the session as it now reads so the caller can write it to the
+     * plan, or null when nothing changed — a board is never emptied of its last
+     * exercise, since a strength session holding nothing is not a session.
+     */
+    fun removeExercise(index: Int): PlannedSession? {
+        val session = activeSession ?: return null
+        if (index !in session.exercises.indices || session.exercises.size <= 1) return null
+        val updated = session.copy(
+            exercises = session.exercises.toMutableList().also { it.removeAt(index) },
+        )
+        activeSession = updated
+        setsDone.removeAt(index)
+        // Stay on the same exercise when one above it goes; otherwise the next one
+        // slides into place, or the last is stepped back onto.
+        if (index < currentExercise) currentExercise--
+        currentExercise = currentExercise.coerceIn(0, updated.exercises.lastIndex)
+        persist()
+        return updated
+    }
+
     fun selectExercise(index: Int) {
         currentExercise = index
         persist()
@@ -294,7 +341,8 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         opened?.let { session -> viewModelScope.launch { workouts.clear(session.id) } }
         sessionLive = false
         sessionOn = false
-        go(Screen.Summary)
+        // With nothing banked the summary would show some older session as this one.
+        go(if (worked.isEmpty()) Screen.Plan else Screen.Summary)
     }
 
     /**
@@ -308,16 +356,24 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         plans.setDone(id, done = true)
     }
 
-    /** Ends a run or race: marks its plan session done and drops whatever was saved to resume it. */
+    /**
+     * Ends a run or race: marks its plan session done and drops whatever was saved
+     * to resume it. A board the clock never ran on was not worked, so it stays open
+     * on the plan. Neither is banked as a session, so there is no summary to show —
+     * it goes back to the week instead.
+     */
     fun endTracked() {
         val opened = activeSession
+        val worked = if (opened?.kind == SessionKind.RACE) raceSeconds > 0 else runSeconds > 0
         runOn = false
         raceOn = false
-        if (opened != null) {
+        if (opened != null && worked) {
+            // Let go of first, so nothing saves progress against a session now done.
+            activeSession = null
             viewModelScope.launch { workouts.clear(opened.id) }
             viewModelScope.launch { markDone(opened.id) }
         }
-        go(Screen.Summary)
+        go(Screen.Plan)
     }
 
     /**
@@ -327,21 +383,43 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
      * against it, or starts clean.
      */
     fun open(session: PlannedSession) {
+        // A finished session opens what was banked for it, not a blank board to
+        // work through — and bank — a second time.
+        if (session.done) {
+            val banked = bankedSessions.value?.firstOrNull {
+                it.name == session.name &&
+                    it.finishedAt.atZone(ZoneId.systemDefault()).toLocalDate() == session.date
+            }
+            if (banked != null) {
+                openSession(banked)
+                return
+            }
+        }
+        val tracker = when (session.kind) {
+            SessionKind.RUN -> Screen.Run
+            SessionKind.RACE -> Screen.Race
+            SessionKind.STRENGTH, SessionKind.REST -> Screen.Live
+        }
+        // The session already on the board is walked back into as it stands: what
+        // is saved for it holds the clock but not the splits or the legs closed.
+        if (session == activeSession && !session.done) {
+            go(tracker)
+            return
+        }
         if (session.id != activeSession?.id) persist()
         activeSession = session
         setsDone.clear()
         setsDone.addAll(List(session.exercises.size) { 0 })
         startSession()
-        startRun()
-        startRace()
+        // Only the board being opened is cleared — a sim under way on the Race tab
+        // is not lost to opening a lifting session.
+        when (session.kind) {
+            SessionKind.RUN -> startRun()
+            SessionKind.RACE -> startRace()
+            else -> Unit
+        }
         if (!session.done) restore(session.id, session.exercises)
-        go(
-            when (session.kind) {
-                SessionKind.RUN -> Screen.Run
-                SessionKind.RACE -> Screen.Race
-                SessionKind.STRENGTH, SessionKind.REST -> Screen.Live
-            },
-        )
+        go(tracker)
     }
 
     /** Moves the week screen to the week beginning [date]. */

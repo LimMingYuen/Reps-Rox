@@ -75,8 +75,8 @@ class MonthExportTest {
 
     @Test
     fun `a month holding nothing is empty`() {
-        assertTrue(exportMonth(AUGUST, emptyList(), emptyList(), emptyList(), UTC).isEmpty)
-        assertFalse(exportMonth(AUGUST, listOf(squat), emptyList(), emptyList(), UTC).isEmpty)
+        assertTrue(exportMonth(AUGUST, emptyList(), emptyList(), emptyList(), zone = UTC).isEmpty)
+        assertFalse(exportMonth(AUGUST, listOf(squat), emptyList(), emptyList(), zone = UTC).isEmpty)
     }
 
     @Test
@@ -85,5 +85,52 @@ class MonthExportTest {
         assertEquals("\"a, b\"", csvCell("a, b"))
         assertEquals("\"say \"\"hi\"\"\"", csvCell("say \"hi\""))
         assertEquals("'=SUM(A1)", csvCell("=SUM(A1)"))
+    }
+
+    @Test
+    fun `weight writes a row a weigh-in, and only the month asked for`() {
+        val file = weightCsv(
+            AUGUST,
+            listOf(
+                WeighIn(LocalDate.of(2026, 8, 16), 81.5f),
+                WeighIn(LocalDate.of(2026, 8, 2), 82f),
+                WeighIn(LocalDate.of(2026, 9, 1), 81f),
+            ),
+        )
+
+        assertEquals("repsrox-weight-2026-08.csv", file.name)
+        assertEquals(2, file.rows)
+        assertEquals(
+            "Date,Weight kg\r\n2026-08-02,${formatKilos(82f)}\r\n2026-08-16,${formatKilos(81.5f)}\r\n",
+            file.text,
+        )
+    }
+
+    @Test
+    fun `a month opens for export on the first of the next one`() {
+        val september = YearMonth.of(2026, 9)
+        assertFalse(canExport(september, today = LocalDate.of(2026, 9, 1)))
+        assertFalse(canExport(september, today = LocalDate.of(2026, 9, 30)))
+        assertTrue(canExport(september, today = LocalDate.of(2026, 10, 1)))
+        assertTrue(canExport(YearMonth.of(2025, 12), today = LocalDate.of(2026, 1, 1)))
+        assertFalse(canExport(YearMonth.of(2026, 10), today = LocalDate.of(2026, 9, 17)))
+        assertEquals(LocalDate.of(2026, 10, 1), exportOpens(september))
+    }
+
+    @Test
+    fun `clearing a month drops what its sheets held and nothing else`() {
+        val july = squat.copy(finishedAt = at(LocalDate.of(2026, 7, 31)))
+        assertEquals(listOf(july), sessionsWithout(AUGUST, listOf(squat, july), UTC))
+
+        val kept = Meal("m3", LocalDate.of(2026, 9, 1), "Lunch")
+        val meals = listOf(Meal("m1", LocalDate.of(2026, 8, 31), "Dinner"), kept)
+        assertEquals(listOf(kept), mealsWithout(AUGUST, meals))
+
+        val raced = RaceResult(at(LocalDate.of(2026, 8, 20)), seconds = 600, legs = listOf(270, 265))
+        val later = raced.copy(finishedAt = at(LocalDate.of(2026, 9, 2)))
+        assertEquals(listOf(later), racesWithout(AUGUST, listOf(raced, later), UTC))
+
+        // Whatever is cleared is exactly what was exported.
+        assertEquals(0, trainingCsv(AUGUST, sessionsWithout(AUGUST, listOf(squat, july), UTC), UTC).rows)
     }
 }

@@ -23,12 +23,12 @@ import androidx.compose.ui.window.DialogProperties
 import com.repsrox.app.data.Exercise
 import com.repsrox.app.data.LOAD_RANGE_KG
 import com.repsrox.app.data.NAME_MAX_CHARS
-import com.repsrox.app.data.REPS_RANGE
 import com.repsrox.app.data.SETS_RANGE
 import com.repsrox.app.data.SetUnit
 import com.repsrox.app.data.WorkSet
 import com.repsrox.app.data.buildExercise
 import com.repsrox.app.data.formatLoad
+import com.repsrox.app.data.range
 import com.repsrox.app.data.sanitise
 import com.repsrox.app.ui.components.AccentAction
 import com.repsrox.app.ui.components.ChoiceChip
@@ -74,7 +74,7 @@ fun AddExerciseDialog(
     val cleanName = sanitise(name)
     val canSave = cleanName.isNotEmpty() &&
         setCount in SETS_RANGE &&
-        repCount in REPS_RANGE &&
+        repCount in unit.range &&
         kg != null && kg in LOAD_RANGE_KG
 
     val focus = remember { FocusRequester() }
@@ -151,8 +151,8 @@ fun AddExerciseDialog(
             if (sets.isNotBlank() && setCount !in SETS_RANGE) {
                 Hint("Between ${SETS_RANGE.first} and ${SETS_RANGE.last} sets")
             }
-            if (reps.isNotBlank() && repCount !in REPS_RANGE) {
-                Hint("Between ${REPS_RANGE.first} and ${REPS_RANGE.last} reps")
+            if (reps.isNotBlank() && repCount !in unit.range) {
+                Hint("Between ${unit.range.first} and ${unit.range.last} ${if (unit == SetUnit.METRES) "metres" else "reps"}")
             }
             if (load.isNotBlank() && (kg == null || kg !in LOAD_RANGE_KG)) {
                 Hint("Up to ${LOAD_RANGE_KG.endInclusive.toInt()} kg")
@@ -204,7 +204,7 @@ fun EditSetDialog(
 
     val repCount = reps.toIntOrNull()
     val kg = if (load.isBlank()) 0f else load.toDecimal()
-    val canSave = repCount in REPS_RANGE && kg != null && kg in LOAD_RANGE_KG
+    val canSave = repCount in initial.unit.range && kg != null && kg in LOAD_RANGE_KG
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -243,8 +243,8 @@ fun EditSetDialog(
                 }
             }
 
-            if (reps.isNotBlank() && repCount !in REPS_RANGE) {
-                Hint("Between ${REPS_RANGE.first} and ${REPS_RANGE.last} reps")
+            if (reps.isNotBlank() && repCount !in initial.unit.range) {
+                Hint("Between ${initial.unit.range.first} and ${initial.unit.range.last} ${if (initial.unit == SetUnit.METRES) "metres" else "reps"}")
             }
             if (load.isNotBlank() && (kg == null || kg !in LOAD_RANGE_KG)) {
                 Hint("Up to ${LOAD_RANGE_KG.endInclusive.toInt()} kg")

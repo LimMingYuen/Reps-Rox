@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.repsrox.app.data.Exercise
+import com.repsrox.app.data.SetUnit
 import com.repsrox.app.data.formatMinutes
 import com.repsrox.app.ui.PlanViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
@@ -151,6 +152,7 @@ fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
                     SetChip(
                         reps = set.reps,
                         kg = set.kg,
+                        unit = set.unit,
                         banked = index < viewModel.setsDone[viewModel.currentExercise],
                         onClick = { viewModel.logSet(viewModel.currentExercise, index) },
                         onHold = { editingSet = index },
@@ -248,6 +250,15 @@ fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
                 rewrite(changed)
                 editingExercise = false
             },
+            // The last exercise stays: a board with nothing on it has nothing to bank.
+            onDelete = if (exercises.size > 1) {
+                {
+                    viewModel.removeExercise(viewModel.currentExercise)?.let(planViewModel::save)
+                    editingExercise = false
+                }
+            } else {
+                null
+            },
         )
     }
 }
@@ -285,6 +296,7 @@ private fun PausedLabel(seconds: Int) {
 private fun RowScope.SetChip(
     reps: Int,
     kg: String,
+    unit: SetUnit,
     banked: Boolean,
     onClick: () -> Unit,
     onHold: () -> Unit,
@@ -301,10 +313,16 @@ private fun RowScope.SetChip(
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("$reps", color = if (banked) Accent else TextPrimary, style = oswald(15f))
+        val metres = unit == SetUnit.METRES
+        // A loaded carry has its second line taken by the load, so the distance says so itself.
         Text(
-            // Bodyweight work carries no load, so the chip says reps and nothing else.
-            if (kg.isBlank()) "reps" else "$kg kg",
+            if (metres && kg.isNotBlank()) "$reps m" else "$reps",
+            color = if (banked) Accent else TextPrimary,
+            style = oswald(15f),
+        )
+        Text(
+            // Unloaded work carries no load, so the chip names what is being counted instead.
+            if (kg.isNotBlank()) "$kg kg" else if (metres) "metres" else "reps",
             color = if (banked) Accent else TextPrimary,
             style = inter(9.5f, lineHeight = 1f, tracking = 0.04f),
         )

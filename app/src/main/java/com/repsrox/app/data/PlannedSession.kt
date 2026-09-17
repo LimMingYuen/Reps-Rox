@@ -84,8 +84,13 @@ data class PlannedSession(
 /** The ranges a built session is held to; outside them the entry is a slip. */
 val SETS_RANGE = 1..12
 val REPS_RANGE = 1..500
+/** A distance runs far past any rep count — a 1000 m row is one ordinary set. */
+val METRES_RANGE = 1..10_000
 val LOAD_RANGE_KG = 0f..500f
 const val NAME_MAX_CHARS = 40
+
+/** The range a set's first figure is held to, by what it counts. */
+val SetUnit.range: IntRange get() = if (this == SetUnit.METRES) METRES_RANGE else REPS_RANGE
 
 /**
  * Builds an exercise from what the add-exercise dialog collects, writing the same

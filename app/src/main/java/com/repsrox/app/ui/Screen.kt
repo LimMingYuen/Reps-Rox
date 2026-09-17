@@ -30,7 +30,10 @@ enum class NavTab(val label: String, val root: Screen, val group: Set<Screen>) {
     You("You", Screen.Profile, setOf(Screen.Profile, Screen.Body)),
 }
 
-/** Where Back goes: out to the tab's root, then to Today. */
+/** The screens that carry links onto others — the only ones Back retraces a step to. */
+val LINKING_SCREENS = setOf(Screen.Today, Screen.Plan, Screen.Profile)
+
+/** Where Back goes when no link was followed to get here: out to the tab's root, then to Today. */
 fun Screen.parent(): Screen? = when (this) {
     Screen.Today -> null
     Screen.Build, Screen.Live, Screen.Run, Screen.Summary -> Screen.Plan

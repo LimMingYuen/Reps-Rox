@@ -106,7 +106,8 @@ fun RepsRoxApp(
                             viewModel.goToWeek(session.date.weekStart())
                             viewModel.go(Screen.Plan)
                         },
-                        onCancel = { viewModel.go(Screen.Plan) },
+                        // Out the way it was come in by — the week, or Today's card.
+                        onCancel = { viewModel.back() },
                     )
                     Screen.Live -> LiveScreen(viewModel)
                     Screen.Run -> RunScreen(viewModel)
@@ -114,14 +115,14 @@ fun RepsRoxApp(
                     Screen.Fuel -> FuelScreen()
                     Screen.Body -> BodyScreen()
                     Screen.Summary -> SummaryScreen(viewModel)
-                    Screen.Profile -> ProfileScreen()
+                    Screen.Profile -> ProfileScreen(onBody = { viewModel.go(Screen.Body) })
                 }
             }
         }
 
         BottomNav(
             current = viewModel.screen,
-            onSelect = viewModel::go,
+            onSelect = viewModel::selectTab,
             modifier = Modifier.navigationBarsPadding(),
         )
     }
@@ -153,12 +154,12 @@ private fun TopBar(title: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun BottomNav(current: Screen, onSelect: (Screen) -> Unit, modifier: Modifier = Modifier) {
+private fun BottomNav(current: Screen, onSelect: (NavTab) -> Unit, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth().background(NavBg)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(BorderSoft))
         Row(Modifier.fillMaxWidth()) {
             NavTab.entries.forEach { tab ->
-                NavItem(tab, active = current in tab.group, onSelect = { onSelect(tab.root) })
+                NavItem(tab, active = current in tab.group, onSelect = { onSelect(tab) })
             }
         }
     }

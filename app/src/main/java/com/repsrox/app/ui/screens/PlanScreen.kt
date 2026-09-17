@@ -72,6 +72,7 @@ fun PlanScreen(
     val today = remember { LocalDate.now() }
     val weekStart = viewModel.weekStart
     val rollingPlan by planViewModel.rollingPlan.collectAsState()
+    val rollingMeals by fuelViewModel.repeating.collectAsState()
     var exporting by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
@@ -143,7 +144,7 @@ fun PlanScreen(
         }
 
         // A plan that repeats has to be stoppable, or a week can never be empty again.
-        if (rollingPlan != null) {
+        if (rollingPlan != null || rollingMeals) {
             QuietAction(
                 "Stop following plan",
                 modifier = Modifier.fillMaxWidth(),
@@ -155,12 +156,13 @@ fun PlanScreen(
     if (stopping) {
         ConfirmDialog(
             title = "Stop following plan",
-            body = "Weeks ahead go back to empty. Weeks you have already edited or " +
-                "finished keep what they hold.",
+            body = "Weeks ahead go back to empty, meals included. Weeks you have already " +
+                "edited or finished keep what they hold.",
             confirm = "Stop",
             onDismiss = { stopping = false },
             onConfirm = {
                 planViewModel.clearRollingPlan()
+                fuelViewModel.clearRollingMeals()
                 stopping = false
             },
         )
@@ -169,7 +171,9 @@ fun PlanScreen(
     if (exporting) {
         val banked = viewModel.bankedSessions.collectAsState().value.orEmpty()
         val weighIns = bodyViewModel.weighIns.collectAsState().value.orEmpty()
+        // The rolling week prints meals a year ahead; the document is this week's.
         val meals = fuelViewModel.meals.collectAsState().value.orEmpty()
+            .filter { it.date.weekStart() == weekStart }
         ExportPlanDialog(
             markdown = exportPlan(
                 plan = sessions.orEmpty(),
