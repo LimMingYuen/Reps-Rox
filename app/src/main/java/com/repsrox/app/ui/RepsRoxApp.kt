@@ -49,7 +49,6 @@ import com.repsrox.app.ui.screens.FuelScreen
 import com.repsrox.app.ui.screens.LiveScreen
 import com.repsrox.app.data.weekStart
 import com.repsrox.app.ui.screens.PlanScreen
-import com.repsrox.app.ui.screens.PlansScreen
 import com.repsrox.app.ui.screens.ProfileScreen
 import com.repsrox.app.ui.screens.RaceScreen
 import com.repsrox.app.ui.screens.RunScreen
@@ -98,7 +97,6 @@ fun RepsRoxApp(
                 when (viewModel.screen) {
                     Screen.Today -> TodayScreen(viewModel)
                     Screen.Plan -> PlanScreen(viewModel)
-                    Screen.Plans -> PlansScreen(viewModel)
                     Screen.Build -> BuildSessionScreen(
                         date = viewModel.buildDate,
                         editing = viewModel.editingSession,

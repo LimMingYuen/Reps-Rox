@@ -32,7 +32,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.repsrox.app.data.DayStatus
 import com.repsrox.app.data.PlannedSession
-import com.repsrox.app.data.SessionKind
 import com.repsrox.app.data.exportPlan
 import com.repsrox.app.data.plural
 import com.repsrox.app.data.rollingWeek
@@ -42,7 +41,6 @@ import com.repsrox.app.ui.BodyViewModel
 import com.repsrox.app.ui.FuelViewModel
 import com.repsrox.app.ui.PlanViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
-import com.repsrox.app.ui.Screen
 import com.repsrox.app.ui.components.AccentAction
 import com.repsrox.app.ui.components.Panel
 import com.repsrox.app.ui.components.QuietAction
@@ -74,7 +72,6 @@ fun PlanScreen(
     val today = remember { LocalDate.now() }
     val weekStart = viewModel.weekStart
     val rollingPlan by planViewModel.rollingPlan.collectAsState()
-    var saving by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
@@ -91,7 +88,8 @@ fun PlanScreen(
 
         val week = weekStart.weekDates().toSet()
         val thisWeek = plan.filter { it.date in week }
-        val training = thisWeek.count { it.kind != SessionKind.REST }
+        // Rest days count, so the header agrees with the rows under it and Today's ring.
+        val training = thisWeek.size
         // A week nothing has been written into yet is the plan being printed. Say so,
         // so a week that fills itself does not look like one someone else planned.
         val fromPlan = thisWeek.isNotEmpty() && thisWeek.all { rollingWeek(it.id) != null }
@@ -128,24 +126,14 @@ fun PlanScreen(
             }
         }
 
-        AccentAction(
-            "New session",
-            icon = Icons.Filled.Add,
-            modifier = Modifier.fillMaxWidth(),
-            // A session added from a week lands in that week, not on today.
-            onClick = { viewModel.goBuild(if (today in week) today else weekStart) },
-        )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            QuietAction(
-                "Save as plan",
-                modifier = Modifier.weight(1f),
-                onClick = { if (thisWeek.isNotEmpty()) saving = true },
-            )
-            QuietAction(
-                "My plans",
-                modifier = Modifier.weight(1f),
-                onClick = { viewModel.go(Screen.Plans) },
+        // A week with something on every day has no room for another session.
+        if (week.any { day -> thisWeek.none { it.date == day } }) {
+            AccentAction(
+                "New session",
+                icon = Icons.Filled.Add,
+                modifier = Modifier.fillMaxWidth(),
+                // A session added from a week lands in that week, not on today.
+                onClick = { viewModel.goBuild(if (today in week) today else weekStart) },
             )
         }
 
@@ -168,23 +156,12 @@ fun PlanScreen(
         ConfirmDialog(
             title = "Stop following plan",
             body = "Weeks ahead go back to empty. Weeks you have already edited or " +
-                "finished keep what they hold, and the plan itself stays in \"My plans\" " +
-                "if you saved it there.",
+                "finished keep what they hold.",
             confirm = "Stop",
             onDismiss = { stopping = false },
             onConfirm = {
                 planViewModel.clearRollingPlan()
                 stopping = false
-            },
-        )
-    }
-
-    if (saving) {
-        SavePlanDialog(
-            onDismiss = { saving = false },
-            onSave = { name ->
-                planViewModel.saveWeekAsPlan(weekStart, name)
-                saving = false
             },
         )
     }
@@ -252,7 +229,7 @@ private fun EmptyWeek() {
     Panel {
         Text("Nothing planned this week.", color = TextPrimary, style = oswald(20f, FontWeight.W500))
         Text(
-            "Build a session, or lay a saved plan down from \"My plans\".",
+            "Build a session, or import a plan.",
             color = TextSubtle,
             style = inter(11.5f, lineHeight = 1.5f),
             modifier = Modifier.padding(top = 8.dp),

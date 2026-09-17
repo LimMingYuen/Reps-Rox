@@ -4,7 +4,6 @@ package com.repsrox.app.ui
 enum class Screen(val title: String) {
     Today("TODAY"),
     Plan("THE WEEK"),
-    Plans("MY PLANS"),
     Build("NEW SESSION"),
     Live("SESSION"),
     Run("RUN"),
@@ -24,7 +23,7 @@ enum class NavTab(val label: String, val root: Screen, val group: Set<Screen>) {
     Train(
         "Train",
         Screen.Plan,
-        setOf(Screen.Plan, Screen.Plans, Screen.Build, Screen.Live, Screen.Run, Screen.Summary),
+        setOf(Screen.Plan, Screen.Build, Screen.Live, Screen.Run, Screen.Summary),
     ),
     Race("Race", Screen.Race, setOf(Screen.Race)),
     Fuel("Fuel", Screen.Fuel, setOf(Screen.Fuel)),
@@ -34,7 +33,7 @@ enum class NavTab(val label: String, val root: Screen, val group: Set<Screen>) {
 /** Where Back goes: out to the tab's root, then to Today. */
 fun Screen.parent(): Screen? = when (this) {
     Screen.Today -> null
-    Screen.Plans, Screen.Build, Screen.Live, Screen.Run, Screen.Summary -> Screen.Plan
+    Screen.Build, Screen.Live, Screen.Run, Screen.Summary -> Screen.Plan
     Screen.Body -> Screen.Profile
     else -> Screen.Today
 }

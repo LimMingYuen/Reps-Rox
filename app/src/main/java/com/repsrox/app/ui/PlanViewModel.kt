@@ -7,14 +7,11 @@ import com.repsrox.app.data.ParsedPlan
 import com.repsrox.app.data.PlanRepository
 import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.RollingPlanRepository
-import com.repsrox.app.data.TemplateRepository
 import com.repsrox.app.data.WeekTemplate
 import com.repsrox.app.data.applyPlanToWrittenWeeks
-import com.repsrox.app.data.applyTemplate
 import com.repsrox.app.data.asWeekTemplate
 import com.repsrox.app.data.projectPlan
 import com.repsrox.app.data.rollingWeek
-import com.repsrox.app.data.weekAsTemplate
 import com.repsrox.app.data.weekStart
 import com.repsrox.app.data.writeDownWeek
 import kotlinx.coroutines.flow.SharingStarted
@@ -27,14 +24,13 @@ import java.time.LocalDate
 import java.util.UUID
 
 /**
- * The week, and the plans it can be laid down from. Kept apart from
+ * The week, and the plan it repeats from. Kept apart from
  * [RepsRoxViewModel] for the same reason [BodyViewModel] is: both outlive the
  * process, and the live tracker's state does not.
  */
 class PlanViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = PlanRepository(application)
-    private val templates = TemplateRepository(application)
     private val rolling = RollingPlanRepository(application)
 
     /**
@@ -49,9 +45,6 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The week being repeated, if one is in force. */
     val rollingPlan: StateFlow<WeekTemplate?> = rolling.plan
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-
-    val plans: StateFlow<List<WeekTemplate>?> = templates.templates
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     // ── The week ────────────────────────────────────────────────────────────
@@ -129,40 +122,6 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
     /** Stops repeating the plan, leaving only the weeks already written down. */
     fun clearRollingPlan() {
         viewModelScope.launch { rolling.set(null) }
-    }
-
-    // ── Plans ───────────────────────────────────────────────────────────────
-
-    /** Saves the week beginning [weekStart] as a plan that can be laid down again. */
-    fun saveWeekAsPlan(weekStart: LocalDate, name: String) {
-        viewModelScope.launch {
-            val plan = projectPlan(repository.sessions.first(), rolling.plan.first(), LocalDate.now())
-            templates.save(weekAsTemplate(plan, weekStart, name, UUID.randomUUID().toString()))
-        }
-    }
-
-    fun deletePlan(id: String) {
-        viewModelScope.launch { templates.remove(id) }
-    }
-
-    /**
-     * Lays [planId] down over [weeks] weeks running from [weekStart]. Every week is
-     * written in one pass so the plan lands whole rather than a week at a time.
-     */
-    fun applyPlan(planId: String, weekStart: LocalDate, weeks: Int) {
-        viewModelScope.launch {
-            val template = templates.templates.first().firstOrNull { it.id == planId } ?: return@launch
-            var plan = repository.sessions.first()
-            repeat(weeks) { week ->
-                plan = applyTemplate(
-                    plan = plan,
-                    template = template,
-                    weekStart = weekStart.plusWeeks(week.toLong()),
-                    id = { UUID.randomUUID().toString() },
-                )
-            }
-            repository.replaceAll(plan)
-        }
     }
 }
 

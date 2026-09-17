@@ -146,7 +146,7 @@ fun Meter(
 }
 
 /**
- * The segmented progress ring: eight dashes around a 108-unit circle, filled up
+ * The segmented progress ring: [total] dashes around a 108-unit circle, filled up
  * to [done] with the next one ghosted. [strokeWidth] is in those same units.
  */
 @Composable
@@ -166,6 +166,8 @@ fun SegmentRing(
             val k = this.size.minDimension / VIEW_BOX
             val radius = 40f * k
             val inset = (54f * k) - radius
+            // The design's eight-dash proportions, stretched to however many dashes there are.
+            val step = 360f / total.coerceAtLeast(1)
             repeat(total) { i ->
                 drawArc(
                     color = when {
@@ -173,8 +175,8 @@ fun SegmentRing(
                         i == done -> nowColor
                         else -> todoColor
                     },
-                    startAngle = i * 44.977f - 14.324f,
-                    sweepAngle = 30.080f,
+                    startAngle = i * step - step * 0.3185f,
+                    sweepAngle = step * 0.6688f,
                     useCenter = false,
                     topLeft = Offset(inset, inset),
                     size = Size(radius * 2f, radius * 2f),

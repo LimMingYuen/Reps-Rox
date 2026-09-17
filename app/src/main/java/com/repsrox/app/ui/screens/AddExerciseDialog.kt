@@ -26,7 +26,9 @@ import com.repsrox.app.data.NAME_MAX_CHARS
 import com.repsrox.app.data.REPS_RANGE
 import com.repsrox.app.data.SETS_RANGE
 import com.repsrox.app.data.SetUnit
+import com.repsrox.app.data.WorkSet
 import com.repsrox.app.data.buildExercise
+import com.repsrox.app.data.formatLoad
 import com.repsrox.app.data.sanitise
 import com.repsrox.app.ui.components.AccentAction
 import com.repsrox.app.ui.components.ChoiceChip
@@ -180,6 +182,90 @@ fun AddExerciseDialog(
                         .fillMaxWidth()
                         .padding(top = 10.dp),
                     onClick = onDelete,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One set, changed on the day: the bar went up, or the last set came in two reps
+ * short. Only this set moves — the rest of the exercise stays as it was written.
+ */
+@Composable
+fun EditSetDialog(
+    number: Int,
+    initial: WorkSet,
+    onDismiss: () -> Unit,
+    onSave: (WorkSet) -> Unit,
+) {
+    var reps by remember { mutableStateOf(initial.reps.toString()) }
+    var load by remember { mutableStateOf(initial.kg) }
+
+    val repCount = reps.toIntOrNull()
+    val kg = if (load.isBlank()) 0f else load.toDecimal()
+    val canSave = repCount in REPS_RANGE && kg != null && kg in LOAD_RANGE_KG
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Panel(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            contentPadding = PaddingValues(16.dp),
+        ) {
+            SectionLabel("Set $number")
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Count(
+                    if (initial.unit == SetUnit.METRES) "Metres" else "Reps",
+                    reps,
+                    { reps = it },
+                    "5",
+                    Modifier.weight(1f),
+                )
+                Column(Modifier.weight(1.2f)) {
+                    SectionLabel("Load", tracking = 0.10f, modifier = Modifier.padding(bottom = 5.dp))
+                    NumberField(
+                        value = load,
+                        onValueChange = { load = it },
+                        suffix = "kg",
+                        placeholder = "—",
+                        textStyle = oswald(18f, FontWeight.W500),
+                    )
+                }
+            }
+
+            if (reps.isNotBlank() && repCount !in REPS_RANGE) {
+                Hint("Between ${REPS_RANGE.first} and ${REPS_RANGE.last} reps")
+            }
+            if (load.isNotBlank() && (kg == null || kg !in LOAD_RANGE_KG)) {
+                Hint("Up to ${LOAD_RANGE_KG.endInclusive.toInt()} kg")
+            }
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                QuietAction("Cancel", modifier = Modifier.weight(1f), onClick = onDismiss)
+                AccentAction(
+                    "Save",
+                    modifier = Modifier.weight(1f),
+                    borderColor = if (canSave) Accent else BorderAction,
+                    onClick = {
+                        if (canSave) {
+                            onSave(initial.copy(reps = repCount!!, kg = if (kg!! > 0f) formatLoad(kg) else ""))
+                        }
+                    },
                 )
             }
         }

@@ -8,21 +8,31 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.repsrox.app.data.DEFAULT_REST_SECONDS
 import com.repsrox.app.data.Exercise
 import com.repsrox.app.data.LEGS
 import com.repsrox.app.data.LoggedExercise
 import com.repsrox.app.data.PlanRepository
 import com.repsrox.app.data.PlannedSession
+import com.repsrox.app.data.ProfileRepository
+import com.repsrox.app.data.REST_RANGE_SECONDS
+import com.repsrox.app.data.REST_STEP_SECONDS
 import com.repsrox.app.data.RUN_SECONDS_PER_KM
+import com.repsrox.app.data.RaceLogRepository
+import com.repsrox.app.data.RaceResult
+import com.repsrox.app.data.RollingPlanRepository
 import com.repsrox.app.data.Session
 import com.repsrox.app.data.SessionKind
 import com.repsrox.app.data.SessionRepository
 import com.repsrox.app.data.WorkoutProgress
 import com.repsrox.app.data.WorkoutRepository
 import com.repsrox.app.data.formatMinutes
+import com.repsrox.app.data.rollingWeek
 import com.repsrox.app.data.weekStart
+import com.repsrox.app.data.writeDownWeek
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -35,8 +45,9 @@ import java.util.Locale
  * it, which is what the Start button is for.
  *
  * The strength session is the one thing here that outlives the process: finishing
- * it writes it to [SessionRepository] and the summary reads it back. The run and
- * the race hold their splits only as long as the process lives, but a session
+ * it writes it to [SessionRepository] and the summary reads it back. A sim goes
+ * into [RaceLogRepository] the same way once it is raced or ended. The run and
+ * the race hold their open splits only as long as the process lives, but a session
  * killed mid-way — the process, not the athlete — picks back up where the
  * tracker last saved it, through [WorkoutRepository].
  */
@@ -45,6 +56,9 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
     private val sessions = SessionRepository(application)
     private val plans = PlanRepository(application)
     private val workouts = WorkoutRepository(application)
+    private val profile = ProfileRepository(application)
+    private val rolling = RollingPlanRepository(application)
+    private val raceLog = RaceLogRepository(application)
 
     var screen by mutableStateOf(Screen.Today)
         private set
@@ -77,13 +91,25 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
     var restSeconds by mutableIntStateOf(0)
         private set
 
-    /** The live session's own clock, from the moment a session is opened. */
+    /** How long the rest clock is wound to after a set. Kept across sessions. */
+    var restTarget by mutableIntStateOf(DEFAULT_REST_SECONDS)
+        private set
+
+    /** The live session's own clock. Starts at zero and stopped, like the run's. */
     var sessionSeconds by mutableIntStateOf(0)
         private set
 
-    /** True only while a session is being worked. Opening the board starts one. */
+    /** True while a session's board is open — finished or not yet started included. */
     var sessionLive by mutableStateOf(false)
         private set
+
+    /** True only while the session clock is running — Start begins it, not arriving. */
+    var sessionOn by mutableStateOf(false)
+        private set
+
+    init {
+        viewModelScope.launch { profile.restSeconds.collect { restTarget = it } }
+    }
 
     /** The run's own clock. Starts at zero and stopped: opening the board is not running. */
     var runSeconds by mutableIntStateOf(0)
@@ -104,6 +130,17 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
 
     /** Legs closed, in course order, each at whatever the clock said it took. */
     val legSeconds = mutableStateListOf<Int>()
+
+    /**
+     * True once the sim on the board is in the log, so ending a sim that already
+     * banked itself on its last leg does not write it down twice.
+     */
+    var raceBanked by mutableStateOf(false)
+        private set
+
+    /** Every sim raced, newest first. Null until the first read off disk lands. */
+    val racedSims: StateFlow<List<RaceResult>?> = raceLog.races
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Which banked session the summary shows. Null means the newest one. */
     var viewedSession by mutableStateOf<Instant?>(null)
@@ -187,8 +224,44 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
      */
     fun logSet(exercise: Int, index: Int) {
         setsDone[exercise] = if (setsDone[exercise] == index + 1) index else index + 1
-        restSeconds = 105
+        restSeconds = restTarget
+        // Banking a set on a board never started is starting it. A clock that was
+        // paused on purpose stays paused.
+        if (sessionSeconds == 0) sessionOn = true
         persist()
+    }
+
+    fun toggleSession() {
+        sessionOn = !sessionOn
+        persist()
+    }
+
+    /** Moves the rest by [steps] notches, and the clock with it if one is running. */
+    fun adjustRest(steps: Int) {
+        val target = (restTarget + steps * REST_STEP_SECONDS).coerceIn(REST_RANGE_SECONDS)
+        val change = target - restTarget
+        if (change == 0) return
+        restTarget = target
+        if (restSeconds > 0) restSeconds = (restSeconds + change).coerceAtLeast(0)
+        viewModelScope.launch { profile.setRestSeconds(target) }
+    }
+
+    /**
+     * Rewrites the exercise at [index] on the open board — a set run heavy or light,
+     * or one more set than was written. Returns the session as it now reads so the
+     * caller can write it to the plan, or null when there is nothing open to change.
+     * Sets banked past the end of a shortened exercise are given back.
+     */
+    fun updateExercise(index: Int, exercise: Exercise): PlannedSession? {
+        val session = activeSession ?: return null
+        if (index !in session.exercises.indices) return null
+        val updated = session.copy(
+            exercises = session.exercises.toMutableList().also { it[index] = exercise },
+        )
+        activeSession = updated
+        setsDone[index] = setsDone[index].coerceAtMost(exercise.sets.size)
+        persist()
+        return updated
     }
 
     fun selectExercise(index: Int) {
@@ -215,12 +288,24 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
                 exercises = worked,
             )
             viewModelScope.launch { sessions.bank(session) }
-            if (opened != null) viewModelScope.launch { plans.setDone(opened.id, done = true) }
+            if (opened != null) viewModelScope.launch { markDone(opened.id) }
         }
         // Banked or not, the session is over — nothing left here to resume.
         opened?.let { session -> viewModelScope.launch { workouts.clear(session.id) } }
         sessionLive = false
+        sessionOn = false
         go(Screen.Summary)
+    }
+
+    /**
+     * Marks [id] done. A session the plan is only printing holds no row to mark, so
+     * its week is written down first — the same step any other change to it takes.
+     */
+    private suspend fun markDone(id: String) {
+        rollingWeek(id)?.let { week ->
+            writeDownWeek(plans.sessions.first(), rolling.plan.first(), week)?.let { plans.replaceAll(it) }
+        }
+        plans.setDone(id, done = true)
     }
 
     /** Ends a run or race: marks its plan session done and drops whatever was saved to resume it. */
@@ -230,7 +315,7 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         raceOn = false
         if (opened != null) {
             viewModelScope.launch { workouts.clear(opened.id) }
-            viewModelScope.launch { plans.setDone(opened.id, done = true) }
+            viewModelScope.launch { markDone(opened.id) }
         }
         go(Screen.Summary)
     }
@@ -285,6 +370,7 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         restSeconds = 0
         sessionSeconds = 0
         sessionLive = true
+        sessionOn = false
     }
 
     fun toggleRun() {
@@ -293,6 +379,8 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun toggleRace() {
+        // A sim with every leg in has no clock left to run.
+        if (raceFinished) return
         raceOn = !raceOn
         persist()
     }
@@ -321,8 +409,44 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         val elapsed = currentLegSeconds
         if (elapsed <= 0) return
         legSeconds.add(elapsed)
-        if (raceFinished) raceOn = false
-        persist()
+        // The last leg in is the race run: it goes in the log without being asked.
+        if (raceFinished) bankRace() else persist()
+    }
+
+    /**
+     * Writes the sim to the log as it stands — every leg closed, and the clock it
+     * stopped on. A sim off the plan is marked done with it, and has nothing left
+     * to resume. A board with no time on it is no race, and one already banked
+     * is not banked again.
+     */
+    private fun bankRace() {
+        raceOn = false
+        if (raceBanked || raceSeconds <= 0) return
+        raceBanked = true
+        val result = RaceResult(Instant.now(), raceSeconds, legSeconds.toList())
+        viewModelScope.launch { raceLog.bank(result) }
+        val opened = activeSession?.takeIf { it.kind == SessionKind.RACE } ?: return
+        // Let go of first, so nothing saves progress against a session now done.
+        activeSession = null
+        viewModelScope.launch { workouts.clear(opened.id) }
+        viewModelScope.launch { markDone(opened.id) }
+    }
+
+    /** Ends the sim where it stands: into the log, and the board cleared for the next. */
+    fun finishRace() {
+        bankRace()
+        startRace()
+    }
+
+    /** Throws the sim on the board away, unrecorded, and clears it for the next. */
+    fun clearRace() {
+        val opened = activeSession?.takeIf { it.kind == SessionKind.RACE }
+        startRace()
+        if (opened != null) viewModelScope.launch { workouts.clear(opened.id) }
+    }
+
+    fun removeRace(result: RaceResult) {
+        viewModelScope.launch { raceLog.remove(result.finishedAt) }
     }
 
     /** Clears the sim board, on the same terms as the run's. */
@@ -330,12 +454,13 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         raceOn = false
         raceSeconds = 0
         legSeconds.clear()
+        raceBanked = false
     }
 
     /** One second of wall clock: rest counts down, the timers count up. */
     fun tick() {
         if (restSeconds > 0) restSeconds--
-        if (sessionLive) {
+        if (sessionLive && sessionOn) {
             sessionSeconds++
             // Often enough that a killed process loses seconds, not the session.
             if (sessionSeconds % 10 == 0) persist()

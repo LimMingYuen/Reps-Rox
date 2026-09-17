@@ -5,9 +5,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,19 +24,27 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.repsrox.app.data.Exercise
 import com.repsrox.app.data.formatMinutes
+import com.repsrox.app.ui.PlanViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
+import com.repsrox.app.ui.components.AccentAction
 import com.repsrox.app.ui.components.Panel
 import com.repsrox.app.ui.components.QuietAction
 import com.repsrox.app.ui.components.RuledRow
@@ -61,10 +71,17 @@ import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
 
 @Composable
-fun LiveScreen(viewModel: RepsRoxViewModel) {
+fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewModel()) {
     val exercises = viewModel.activeExercises
     val exercise = exercises.getOrNull(viewModel.currentExercise) ?: return
     val session = viewModel.activeSession
+    var editingSet by remember { mutableStateOf<Int?>(null) }
+    var editingExercise by remember { mutableStateOf(false) }
+
+    // The board and the plan are the same session, so a change here is written back.
+    fun rewrite(changed: Exercise) {
+        viewModel.updateExercise(viewModel.currentExercise, changed)?.let(planViewModel::save)
+    }
 
     Column(
         Modifier
@@ -81,7 +98,7 @@ fun LiveScreen(viewModel: RepsRoxViewModel) {
                 color = TextPrimary,
                 style = oswald(30f, tracking = 0.02f),
             )
-            RecordingPulse()
+            if (viewModel.sessionOn) RecordingPulse() else PausedLabel(viewModel.sessionSeconds)
             Spacer(Modifier.weight(1f))
             Text(
                 "${viewModel.totalSetsDone}/${viewModel.plannedSets} sets",
@@ -114,6 +131,20 @@ fun LiveScreen(viewModel: RepsRoxViewModel) {
                 )
                 Spacer(Modifier.weight(1f))
                 Text(exercise.target, color = TextSecondary, style = mono(11.5f))
+                // Drawn small to sit quietly in the card, with a finger-sized target.
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .clickable { editingExercise = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = "Edit ${exercise.name}",
+                        tint = TextDim,
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 exercise.sets.forEachIndexed { index, set ->
@@ -122,11 +153,13 @@ fun LiveScreen(viewModel: RepsRoxViewModel) {
                         kg = set.kg,
                         banked = index < viewModel.setsDone[viewModel.currentExercise],
                         onClick = { viewModel.logSet(viewModel.currentExercise, index) },
+                        onHold = { editingSet = index },
                     )
                 }
             }
             Text(
-                "Tap a set to bank it at target. Hold to change weight or reps.",
+                "Tap a set to bank it. Hold one to change its weight or reps; " +
+                    "the pencil changes how many sets.",
                 color = TextFaint,
                 style = inter(10.5f),
             )
@@ -134,6 +167,8 @@ fun LiveScreen(viewModel: RepsRoxViewModel) {
 
         RestCard(
             seconds = viewModel.restSeconds,
+            target = viewModel.restTarget,
+            onAdjust = viewModel::adjustRest,
             onSkip = viewModel::skipRest,
         )
 
@@ -168,10 +203,51 @@ fun LiveScreen(viewModel: RepsRoxViewModel) {
             }
         }
 
-        QuietAction(
-            "Finish session",
-            modifier = Modifier.fillMaxWidth(),
-            onClick = viewModel::finishSession,
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AccentAction(
+                // A session yet to be started reads Start, not Resume: there is
+                // nothing to resume until the clock has run.
+                when {
+                    viewModel.sessionOn -> "Pause"
+                    viewModel.sessionSeconds == 0 -> "Start"
+                    else -> "Resume"
+                },
+                modifier = Modifier.weight(1f),
+                onClick = viewModel::toggleSession,
+            )
+            QuietAction(
+                "Finish session",
+                modifier = Modifier.weight(1f),
+                onClick = viewModel::finishSession,
+            )
+        }
+    }
+
+    editingSet?.let { index ->
+        val set = exercise.sets.getOrNull(index)
+        if (set == null) {
+            editingSet = null
+        } else {
+            EditSetDialog(
+                number = index + 1,
+                initial = set,
+                onDismiss = { editingSet = null },
+                onSave = { changed ->
+                    rewrite(exercise.copy(sets = exercise.sets.toMutableList().also { it[index] = changed }))
+                    editingSet = null
+                },
+            )
+        }
+    }
+
+    if (editingExercise) {
+        AddExerciseDialog(
+            initial = exercise,
+            onDismiss = { editingExercise = false },
+            onSave = { changed ->
+                rewrite(changed)
+                editingExercise = false
+            },
         )
     }
 }
@@ -194,8 +270,25 @@ private fun RecordingPulse() {
     )
 }
 
+/** What stands where the pulse does while the clock is stopped. */
 @Composable
-private fun RowScope.SetChip(reps: Int, kg: String, banked: Boolean, onClick: () -> Unit) {
+private fun PausedLabel(seconds: Int) {
+    Text(
+        (if (seconds == 0) "not started" else "paused").uppercase(),
+        color = TextMeta,
+        style = inter(10f, lineHeight = 1f, tracking = 0.12f),
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RowScope.SetChip(
+    reps: Int,
+    kg: String,
+    banked: Boolean,
+    onClick: () -> Unit,
+    onHold: () -> Unit,
+) {
     val shape = RoundedCornerShape(6.dp)
     Column(
         Modifier
@@ -204,7 +297,7 @@ private fun RowScope.SetChip(reps: Int, kg: String, banked: Boolean, onClick: ()
             .clip(shape)
             .background(if (banked) AccentSet else SurfaceRaised, shape)
             .border(1.dp, if (banked) Accent else BorderChip, shape)
-            .clickable(onClick = onClick),
+            .combinedClickable(onClick = onClick, onLongClick = onHold),
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -219,7 +312,7 @@ private fun RowScope.SetChip(reps: Int, kg: String, banked: Boolean, onClick: ()
 }
 
 @Composable
-private fun RestCard(seconds: Int, onSkip: () -> Unit) {
+private fun RestCard(seconds: Int, target: Int, onAdjust: (Int) -> Unit, onSkip: () -> Unit) {
     // When the clock runs out the whole card lifts to the accent.
     val resting = seconds > 0
     val edge = if (resting) BorderSoft else AccentLine
@@ -247,7 +340,7 @@ private fun RestCard(seconds: Int, onSkip: () -> Unit) {
                 )
             }
             Column(Modifier.weight(1f)) {
-                SectionLabel("Rest", tracking = 0.12f)
+                SectionLabel("Rest · ${formatMinutes(target)}", tracking = 0.12f)
                 Text(
                     if (resting) formatMinutes(seconds) else "ready",
                     color = ink,
@@ -255,16 +348,25 @@ private fun RestCard(seconds: Int, onSkip: () -> Unit) {
                     modifier = Modifier.padding(top = 3.dp),
                 )
             }
-            Text(
-                "Skip".uppercase(),
-                color = TextSubtle,
-                style = inter(11f, FontWeight.W500, lineHeight = 1f, tracking = 0.06f),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .border(1.dp, BorderAction, RoundedCornerShape(6.dp))
-                    .clickable(onClick = onSkip)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                RestButton("−15", "Shorten rest by 15 seconds") { onAdjust(-1) }
+                RestButton("+15", "Lengthen rest by 15 seconds") { onAdjust(1) }
+                RestButton("Skip", "Skip rest", onSkip)
+            }
         }
     }
+}
+
+@Composable
+private fun RestButton(label: String, description: String, onClick: () -> Unit) {
+    Text(
+        label.uppercase(),
+        color = TextSubtle,
+        style = inter(11f, FontWeight.W500, lineHeight = 1f, tracking = 0.06f),
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .border(1.dp, BorderAction, RoundedCornerShape(6.dp))
+            .clickable(onClickLabel = description, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    )
 }

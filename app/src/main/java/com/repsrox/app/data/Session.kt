@@ -101,8 +101,14 @@ fun Session.day(zone: ZoneId = ZoneId.systemDefault()): LocalDate =
 fun Session.dayLabel(
     today: LocalDate = LocalDate.now(),
     zone: ZoneId = ZoneId.systemDefault(),
+): String = finishedAt.dayLabel(today, zone)
+
+/** The same dating for anything else banked at a moment — a raced sim, say. */
+fun Instant.dayLabel(
+    today: LocalDate = LocalDate.now(),
+    zone: ZoneId = ZoneId.systemDefault(),
 ): String {
-    val day = day(zone)
+    val day = atZone(zone).toLocalDate()
     return when {
         day == today -> "today"
         day == today.minusDays(1) -> "yesterday"
