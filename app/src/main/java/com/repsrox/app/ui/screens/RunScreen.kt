@@ -18,7 +18,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.repsrox.app.data.formatMinutes
 import com.repsrox.app.ui.RepsRoxViewModel
-import com.repsrox.app.ui.Screen
 import com.repsrox.app.ui.components.AccentAction
 import com.repsrox.app.ui.components.Meter
 import com.repsrox.app.ui.components.Panel
@@ -142,7 +141,7 @@ fun RunScreen(viewModel: RepsRoxViewModel) {
             QuietAction(
                 "End",
                 horizontalPadding = 18.dp,
-                onClick = { viewModel.go(Screen.Summary) },
+                onClick = viewModel::endTracked,
             )
         }
     }
