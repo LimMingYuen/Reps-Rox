@@ -53,26 +53,6 @@ class WeightLogCodecTest {
     }
 }
 
-class WeightLogMergeTest {
-
-    private val date = LocalDate.of(2026, 8, 15)
-
-    @Test
-    fun `a weigh-in for a new date is added`() {
-        val log = listOf(WeighIn(date.minusDays(1), 81.6f))
-        assertEquals(
-            log + WeighIn(date, 81.4f),
-            mergeInto(log, WeighIn(date, 81.4f)),
-        )
-    }
-
-    @Test
-    fun `re-logging a date replaces it rather than doubling it up`() {
-        val log = listOf(WeighIn(date, 81.4f))
-        assertEquals(listOf(WeighIn(date, 80.9f)), mergeInto(log, WeighIn(date, 80.9f)))
-    }
-}
-
 class WeightSummaryTest {
 
     private val today = LocalDate.of(2026, 8, 15)

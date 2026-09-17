@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import com.repsrox.app.data.RUN_SPLITS
 import com.repsrox.app.data.ZONES
 import com.repsrox.app.data.ZONE_COLUMN_HEIGHT
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.repsrox.app.ui.PlanViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.Screen
 import com.repsrox.app.ui.components.AccentAction
@@ -46,7 +48,7 @@ import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
 
 @Composable
-fun RunScreen(viewModel: RepsRoxViewModel) {
+fun RunScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewModel()) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -102,14 +104,22 @@ fun RunScreen(viewModel: RepsRoxViewModel) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AccentAction(
-                if (viewModel.runOn) "Pause" else "Resume",
+                when {
+                    viewModel.runOn -> "Pause"
+                    viewModel.runSeconds > 0 -> "Resume"
+                    else -> "Start run"
+                },
                 modifier = Modifier.weight(1f),
                 onClick = viewModel::toggleRun,
             )
             QuietAction(
                 "End",
                 horizontalPadding = 18.dp,
-                onClick = { viewModel.go(Screen.Summary) },
+                onClick = {
+                    viewModel.activeSession?.let { planViewModel.markDone(it.id) }
+                    viewModel.finishLive()
+                    viewModel.go(Screen.Summary)
+                },
             )
         }
     }

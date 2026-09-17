@@ -17,7 +17,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.repsrox.app.data.LIVE_ELAPSED
 import com.repsrox.app.data.formatTonnes
 import com.repsrox.app.data.logLine
 import com.repsrox.app.ui.RepsRoxViewModel
@@ -44,8 +43,7 @@ import com.repsrox.app.ui.theme.oswald
 fun SummaryScreen(viewModel: RepsRoxViewModel) {
     val session = viewModel.activeSession
     val exercises = viewModel.activeExercises
-    // Nothing times a session yet, so the duration stays the design's fixed clock;
-    // everything countable is read off what was actually worked through.
+    // Everything countable is read off what was actually worked through.
     val volume = exercises.fold(0f) { total, exercise ->
         total + exercise.sets.fold(0f) { sum, set -> sum + set.reps * (set.kg.toFloatOrNull() ?: 0f) }
     }
@@ -71,7 +69,7 @@ fun SummaryScreen(viewModel: RepsRoxViewModel) {
                 Modifier.padding(top = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                StatBlock(formatMinutes(LIVE_ELAPSED), "duration", valueSize = 20f)
+                StatBlock(formatMinutes(viewModel.sessionSeconds), "duration", valueSize = 20f)
                 if (volume > 0f) {
                     StatBlock(formatTonnes(volume), "volume", valueSize = 20f)
                 }

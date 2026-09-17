@@ -103,7 +103,11 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AccentAction(
-                if (viewModel.raceOn) "Pause" else "Resume",
+                when {
+                    viewModel.raceOn -> "Pause"
+                    viewModel.raceSeconds > 0 -> "Resume"
+                    else -> "Start race"
+                },
                 modifier = Modifier.weight(1f),
                 verticalPadding = 13.dp,
                 onClick = viewModel::toggleRace,
@@ -159,7 +163,7 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
                     Text(
                         when {
                             past -> formatMinutes(LEG_TIMES[index])
-                            now -> "running"
+                            now -> if (viewModel.raceOn) "running" else "—"
                             else -> "—"
                         },
                         color = ink,

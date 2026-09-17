@@ -34,9 +34,6 @@ val EXERCISES = listOf(
     ),
 )
 
-/** The design's fixed elapsed clock for the live session, in seconds. */
-const val LIVE_ELAPSED = 1877
-
 // ── Race simulation ─────────────────────────────────────────────────────────
 
 data class Leg(val tag: String, val name: String, val target: String) {

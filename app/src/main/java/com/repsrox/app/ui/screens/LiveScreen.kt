@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -34,10 +36,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.repsrox.app.data.LIVE_ELAPSED
 import com.repsrox.app.ui.PlanViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.Screen
+import com.repsrox.app.ui.components.AccentAction
 import com.repsrox.app.ui.components.Panel
 import com.repsrox.app.ui.components.QuietAction
 import com.repsrox.app.ui.components.RuledRow
@@ -81,11 +83,19 @@ fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                formatMinutes(LIVE_ELAPSED),
+                formatMinutes(viewModel.liveSeconds),
                 color = TextPrimary,
                 style = oswald(30f, tracking = 0.02f),
             )
-            RecordingPulse()
+            if (viewModel.liveOn) {
+                RecordingPulse()
+            } else if (viewModel.liveSeconds > 0) {
+                Text(
+                    "paused".uppercase(),
+                    color = TextMeta,
+                    style = inter(10f, lineHeight = 1f, tracking = 0.12f),
+                )
+            }
             Spacer(Modifier.weight(1f))
             Text(
                 "${viewModel.totalSetsDone}/${viewModel.plannedSets} sets",
@@ -100,6 +110,23 @@ fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
                 color = TextSecondary,
                 style = inter(12.5f, FontWeight.W500, lineHeight = 1.3f),
                 modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+
+        // The clock waits to be started; arriving on the screen never starts it.
+        if (viewModel.liveOn) {
+            QuietAction(
+                "Pause",
+                icon = Icons.Filled.Pause,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = viewModel::toggleLive,
+            )
+        } else {
+            AccentAction(
+                if (viewModel.liveSeconds > 0) "Resume" else "Start workout",
+                icon = Icons.Filled.PlayArrow,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = viewModel::toggleLive,
             )
         }
 
@@ -179,6 +206,7 @@ fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
             // asking for it and the ring on Today moves.
             onClick = {
                 session?.let { planViewModel.markDone(it.id) }
+                viewModel.finishLive()
                 viewModel.go(Screen.Summary)
             },
         )
