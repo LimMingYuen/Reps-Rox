@@ -194,11 +194,20 @@ fun applyPlanToWrittenWeeks(
     id: (Int) -> String,
 ): List<PlannedSession> {
     val from = today.weekStart()
+    // Builds before the empty first run seeded a sample week and marked its days
+    // done. Nobody trained those, so they are not a record for the plan to step
+    // around — left in, a seeded Monday keeps the imported Monday off the week.
+    val own = stored.filterNot { it.isLeftoverSeed() && !it.date.isBefore(from) }
     return stored.map { it.date.weekStart() }
         .filterNot { it.isBefore(from) }
         .distinct()
-        .fold(stored) { written, week -> applyTemplate(written, plan, week, id) }
+        .fold(own) { written, week -> applyTemplate(written, plan, week, id) }
 }
+
+/** The id the sample week's sessions were written under, back when one was seeded. */
+private const val SEED_PREFIX = "seed-"
+
+private fun PlannedSession.isLeftoverSeed(): Boolean = id.startsWith(SEED_PREFIX)
 
 private fun SessionKind.shortLabel(): String = when (this) {
     SessionKind.STRENGTH -> "lift"

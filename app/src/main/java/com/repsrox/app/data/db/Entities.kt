@@ -1,5 +1,6 @@
 package com.repsrox.app.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -9,6 +10,7 @@ import androidx.room.Relation
 import com.repsrox.app.data.Exercise
 import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.SessionKind
+import com.repsrox.app.data.SetUnit
 import com.repsrox.app.data.TemplateSession
 import com.repsrox.app.data.WeekTemplate
 import com.repsrox.app.data.WorkSet
@@ -105,6 +107,8 @@ data class SetEntity(
     val reps: Int,
     /** Text, as [WorkSet] holds it: blank is bodyweight. */
     val kg: String,
+    /** Whether [reps] counts reps or metres — a run or a carry is a distance. */
+    @ColumnInfo(defaultValue = "REPS") val unit: SetUnit = SetUnit.REPS,
 )
 
 @Entity(tableName = "weigh_ins")
@@ -168,7 +172,7 @@ private fun List<ExerciseWithSets>.toModels(): List<Exercise> = sortedBy { it.ex
     Exercise(
         name = row.exercise.name,
         target = row.exercise.target,
-        sets = row.sets.sortedBy { it.position }.map { WorkSet(it.reps, it.kg) },
+        sets = row.sets.sortedBy { it.position }.map { WorkSet(it.reps, it.kg, it.unit) },
     )
 }
 

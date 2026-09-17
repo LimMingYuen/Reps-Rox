@@ -13,6 +13,7 @@ import com.repsrox.app.data.RaceRepository
 import com.repsrox.app.data.RaceResult
 import com.repsrox.app.data.Session
 import com.repsrox.app.data.SessionRepository
+import com.repsrox.app.data.WeighIn
 import com.repsrox.app.data.WeightRepository
 import com.repsrox.app.data.bestLifts
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.YearMonth
 
 /**
  * Everything the Profile screen reads off disk, in one shape. Held together
@@ -41,6 +43,7 @@ data class ExportHistory(
     val sessions: List<Session>,
     val meals: List<Meal>,
     val races: List<RaceResult>,
+    val weighIns: List<WeighIn>,
 )
 
 /**
@@ -74,10 +77,23 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /** Null until all three logs are read, so an export never goes out short a sheet. */
+    /** Null until all four logs are read, so an export never goes out short a sheet. */
     val history: StateFlow<ExportHistory?> =
-        combine(sessions.sessions, meals.meals, raceLog.races, ::ExportHistory)
+        combine(sessions.sessions, meals.stored, raceLog.races, weights.weighIns, ::ExportHistory)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * Clears an exported month out of the training, meal and race logs. Weigh-ins go
+     * out as a copy and stay, since the Body trend reads months back. The files are
+     * the record from here on: a best lift set in that month leaves the board with it.
+     */
+    fun clearMonth(month: YearMonth) {
+        viewModelScope.launch {
+            sessions.clearMonth(month)
+            meals.clearMonth(month)
+            raceLog.clearMonth(month)
+        }
+    }
 
     /** Names the install, or clears the name when what was typed is blank. */
     fun rename(name: String) {

@@ -212,6 +212,16 @@ class RollingPlanTest {
     }
 
     @Test
+    fun `a leftover sample session marked done does not keep the plan off its day`() {
+        // Old builds seeded a sample week with its days already ticked off.
+        val seeded = PlannedSession("seed-0", monday, "Upper pull + carries", SessionKind.STRENGTH, done = true)
+
+        val written = applyPlanToWrittenWeeks(listOf(seeded), plan, today = monday) { "new-$it" }
+
+        assertEquals(listOf("Lower A", "Upper A"), written.map { it.name })
+    }
+
+    @Test
     fun `weeks behind you are left as they were written`() {
         val lastWeek = listOf(stored(monday.minusWeeks(1), id = "old"))
 

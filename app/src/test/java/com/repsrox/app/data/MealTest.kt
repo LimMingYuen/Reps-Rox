@@ -128,3 +128,65 @@ class MealRecordTest {
         assertNull(decodeMeals("1|2026-08-15||detail|0|0|0|0").firstOrNull())
     }
 }
+
+class RollingMealsTest {
+
+    // Thursday; the week runs Monday 14th to Sunday 20th.
+    private val today: LocalDate = LocalDate.of(2026, 9, 17)
+
+    /** Monday 7th to Sunday 13th — a document written against last week. */
+    private val lastWeek = (7..13).associate { day ->
+        val date = LocalDate.of(2026, 9, day)
+        date to listOf(meal("$date#0", "Breakfast $date", date = date, logged = true))
+    }
+    private val rolling = mealWeek(lastWeek)
+
+    @Test
+    fun `the week prints onto every day ahead by weekday, unlogged`() {
+        val meals = projectMeals(emptyList(), rolling, emptySet(), today)
+
+        val nextThursday = meals.single { it.date == today.plusWeeks(1) }
+        assertEquals("Breakfast 2026-09-10", nextThursday.name)
+        assertEquals(rollingMealId(today.plusWeeks(1), 0), nextThursday.id)
+        assertTrue(meals.none { it.logged })
+        assertEquals(today, meals.first().date)
+    }
+
+    @Test
+    fun `a day with meals of its own, or written down, is left alone`() {
+        val own = meal("mine", "Brunch", date = today)
+        val meals = projectMeals(listOf(own), rolling, setOf(today.plusDays(1)), today)
+
+        assertEquals(listOf(own), meals.filter { it.date == today })
+        assertTrue(meals.none { it.date == today.plusDays(1) })
+    }
+
+    @Test
+    fun `a printed meal's id names its day`() {
+        assertEquals(today, rollingMealDay(rollingMealId(today, 3)))
+        assertNull(rollingMealDay("mine"))
+    }
+
+    @Test
+    fun `writing a day down stores what was printed, once`() {
+        val written = writeDownMealDay(emptyList(), rolling, emptySet(), today, today)!!
+
+        assertEquals(rollingMealId(today, 0), written.single().id)
+        assertNull(writeDownMealDay(written, rolling, emptySet(), today, today))
+        assertNull(writeDownMealDay(emptyList(), rolling, setOf(today), today, today))
+        assertNull(writeDownMealDay(emptyList(), rolling, emptySet(), today.minusDays(1), today))
+    }
+
+    @Test
+    fun `a new document lands on days ahead already written down`() {
+        val tomorrow = today.plusDays(1)
+        val stored = listOf(meal("old", "Old", date = tomorrow), meal("past", "Past", date = today.minusDays(1)))
+
+        val days = importMealDays(lastWeek, stored, setOf(today), today)
+
+        assertEquals("Breakfast 2026-09-11", days.getValue(tomorrow).single().name)
+        assertEquals("Breakfast 2026-09-10", days.getValue(today).single().name)
+        assertNull(days[today.minusDays(1)])
+        assertEquals(lastWeek.getValue(LocalDate.of(2026, 9, 7)), days[LocalDate.of(2026, 9, 7)])
+    }
+}

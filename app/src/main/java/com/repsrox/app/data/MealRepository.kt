@@ -9,10 +9,17 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
+import java.time.YearMonth
 
 private val Context.mealStore: DataStore<Preferences> by preferencesDataStore(name = "meals")
 
 private val MEALS_KEY = stringPreferencesKey("meals")
+
+/** The week every day ahead repeats, in the log's own format — see [mealWeek]. */
+private val ROLLING_KEY = stringPreferencesKey("rolling")
+
+/** Days ahead that were written down and so no longer print from the rolling week. */
+private val WRITTEN_KEY = stringPreferencesKey("written")
 
 /**
  * The meal log, on disk. A day gains a handful of rows at most, so the whole log
@@ -31,35 +38,87 @@ class MealRepository(context: Context) {
 
     private val store = context.applicationContext.mealStore
 
-    /** Earliest first — the order a week of meals reads in. */
-    val meals: Flow<List<Meal>> = store.data.map { it.log() }
+    /**
+     * Earliest first — the order a week of meals reads in. This is the log as the
+     * app reads it, with the rolling week printed onto the days ahead.
+     */
+    val meals: Flow<List<Meal>> = store.data.map { prefs ->
+        projectMeals(prefs.log(), prefs.rolling(), prefs.written(), LocalDate.now())
+    }
+
+    /** Only what is on disk — a record of what was eaten has no use for days still to come. */
+    val stored: Flow<List<Meal>> = store.data.map { it.log() }
+
+    /** Whether a meal week is in force, and so whether there is one to stop. */
+    val repeating: Flow<Boolean> = store.data.map { it.rolling().isNotEmpty() }
 
     /** Writes a meal, replacing whatever was held under the same id. */
-    suspend fun save(meal: Meal) = update { log ->
+    suspend fun save(meal: Meal) = update({ meal.date }) { log ->
         log.filterNot { it.id == meal.id } + meal
     }
 
-    suspend fun remove(id: String) = update { log ->
+    suspend fun remove(id: String) = update({ log -> log.dayOf(id) }) { log ->
         log.filterNot { it.id == id }
     }
 
-    suspend fun setLogged(id: String, logged: Boolean) = update { log ->
+    suspend fun setLogged(id: String, logged: Boolean) = update({ log -> log.dayOf(id) }) { log ->
         log.map { if (it.id == id) it.copy(logged = logged) else it }
     }
 
-    /** Applies an imported document's meal days, a whole day at a time. */
-    suspend fun applyDays(days: Map<LocalDate, List<Meal>>) = update { log ->
-        applyMealDays(log, days)
-    }
-
-    private suspend fun update(transform: (List<Meal>) -> List<Meal>) {
+    /**
+     * Applies an imported document: its meal days become the week every day ahead
+     * repeats, and the dates it names — along with the days ahead already written
+     * down — are laid over the log a whole day at a time.
+     */
+    suspend fun applyImport(days: Map<LocalDate, List<Meal>>, today: LocalDate = LocalDate.now()) {
+        if (days.isEmpty()) return
         store.edit { prefs ->
-            prefs[MEALS_KEY] = encodeMeals(transform(prefs.log()).sortedBy { it.date })
+            val log = prefs.log()
+            prefs[ROLLING_KEY] = encodeMeals(mealWeek(days))
+            prefs[MEALS_KEY] = encodeMeals(applyMealDays(log, importMealDays(days, log, prefs.written(), today)))
         }
     }
 
+    /** Drops [month] from the log once it has been exported. Only a month already over is ever asked for, so no day ahead is touched. */
+    suspend fun clearMonth(month: YearMonth) {
+        store.edit { prefs -> prefs[MEALS_KEY] = encodeMeals(mealsWithout(month, prefs.log())) }
+    }
+
+    /** Stops repeating the meal week, leaving only the days already written down. */
+    suspend fun clearRolling() {
+        store.edit { it.remove(ROLLING_KEY) }
+    }
+
+    /**
+     * Changes the log. A day the rolling week is printing holds nothing of its own,
+     * so there is no meal there to edit, check in or delete; the day [touched] is
+     * written down first, and the week stops speaking for it from then on.
+     */
+    private suspend fun update(touched: (List<Meal>) -> LocalDate?, transform: (List<Meal>) -> List<Meal>) {
+        store.edit { prefs ->
+            val today = LocalDate.now()
+            val log = prefs.log()
+            val written = prefs.written()
+            val day = touched(log)
+            val real = day?.let { writeDownMealDay(log, prefs.rolling(), written, it, today) } ?: log
+            if (day != null && !day.isBefore(today)) {
+                // Days behind you are never printed, so there is no use remembering them.
+                prefs[WRITTEN_KEY] = (written + day).filterNot { it.isBefore(today) }.sorted().joinToString(",")
+            }
+            prefs[MEALS_KEY] = encodeMeals(transform(real).sortedBy { it.date })
+        }
+    }
+
+    /** The day the meal under [id] falls on, whether it is stored or still only printed. */
+    private fun List<Meal>.dayOf(id: String): LocalDate? = firstOrNull { it.id == id }?.date ?: rollingMealDay(id)
+
     /** Nothing has ever been written is an empty log, not a seeded one. */
     private fun Preferences.log(): List<Meal> = this[MEALS_KEY]?.let(::decodeMeals).orEmpty()
+
+    private fun Preferences.rolling(): List<Meal> = this[ROLLING_KEY]?.let(::decodeMeals).orEmpty()
+
+    private fun Preferences.written(): Set<LocalDate> = this[WRITTEN_KEY].orEmpty().split(",")
+        .mapNotNullTo(mutableSetOf()) { runCatching { LocalDate.parse(it) }.getOrNull() }
 }
 
 // ── Record format ───────────────────────────────────────────────────────────

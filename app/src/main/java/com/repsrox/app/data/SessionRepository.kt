@@ -9,6 +9,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Instant
+import java.time.YearMonth
+import java.time.ZoneId
 
 private val Context.sessionStore: DataStore<Preferences> by preferencesDataStore(name = "sessions")
 
@@ -38,6 +40,14 @@ class SessionRepository(context: Context) {
         store.edit { prefs ->
             val log = prefs[LOG_KEY]?.let(::decodeSessions).orEmpty()
             prefs[LOG_KEY] = encodeSessions((log + session).sortedByDescending { it.finishedAt })
+        }
+    }
+
+    /** Drops [month] from the log once it has been exported. */
+    suspend fun clearMonth(month: YearMonth, zone: ZoneId = ZoneId.systemDefault()) {
+        store.edit { prefs ->
+            val log = prefs[LOG_KEY]?.let(::decodeSessions).orEmpty()
+            prefs[LOG_KEY] = encodeSessions(sessionsWithout(month, log, zone))
         }
     }
 }

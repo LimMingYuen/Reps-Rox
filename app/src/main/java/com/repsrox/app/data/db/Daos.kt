@@ -103,7 +103,7 @@ abstract class PlanDao {
             val exerciseId = insert(row(position, exercise))
             insertSets(
                 exercise.sets.mapIndexed { index, set ->
-                    SetEntity(exerciseId = exerciseId, position = index, reps = set.reps, kg = set.kg)
+                    SetEntity(exerciseId = exerciseId, position = index, reps = set.reps, kg = set.kg, unit = set.unit)
                 },
             )
         }
