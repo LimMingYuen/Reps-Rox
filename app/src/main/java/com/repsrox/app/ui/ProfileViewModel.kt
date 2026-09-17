@@ -3,10 +3,15 @@ package com.repsrox.app.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.repsrox.app.data.Meal
+import com.repsrox.app.data.MealRepository
 import com.repsrox.app.data.PersonalRecord
 import com.repsrox.app.data.ProfileRepository
 import com.repsrox.app.data.Race
+import com.repsrox.app.data.RaceLogRepository
 import com.repsrox.app.data.RaceRepository
+import com.repsrox.app.data.RaceResult
+import com.repsrox.app.data.Session
 import com.repsrox.app.data.SessionRepository
 import com.repsrox.app.data.WeightRepository
 import com.repsrox.app.data.bestLifts
@@ -31,6 +36,13 @@ data class ProfileState(
     val lifts: List<PersonalRecord>,
 )
 
+/** The logs a month's export is cut from — everything banked, whatever the month. */
+data class ExportHistory(
+    val sessions: List<Session>,
+    val meals: List<Meal>,
+    val races: List<RaceResult>,
+)
+
 /**
  * The Profile screen's state. Beyond the name it owns no store of its own: the
  * weight is the log the Body screen keeps and the lifts are the sessions the
@@ -43,6 +55,8 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     private val weights = WeightRepository(application)
     private val sessions = SessionRepository(application)
     private val races = RaceRepository(application)
+    private val meals = MealRepository(application)
+    private val raceLog = RaceLogRepository(application)
 
     /** Null until the first read off disk lands, so the screen doesn't flash its empty state. */
     val state: StateFlow<ProfileState?> =
@@ -59,6 +73,11 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 lifts = bestLifts(log),
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Null until all three logs are read, so an export never goes out short a sheet. */
+    val history: StateFlow<ExportHistory?> =
+        combine(sessions.sessions, meals.meals, raceLog.races, ::ExportHistory)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Names the install, or clears the name when what was typed is blank. */
     fun rename(name: String) {

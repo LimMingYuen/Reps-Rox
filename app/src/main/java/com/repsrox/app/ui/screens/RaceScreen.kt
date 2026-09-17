@@ -11,12 +11,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowRight
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.repsrox.app.data.LEGS
+import com.repsrox.app.data.RaceResult
+import com.repsrox.app.data.bestRace
+import com.repsrox.app.data.complete
+import com.repsrox.app.data.dayLabel
 import com.repsrox.app.data.formatDelta
 import com.repsrox.app.data.formatHours
 import com.repsrox.app.data.formatMinutes
@@ -24,9 +33,11 @@ import com.repsrox.app.data.legDelta
 import com.repsrox.app.data.projectedFinish
 import com.repsrox.app.data.runAverage
 import com.repsrox.app.data.stationAverage
+import com.repsrox.app.data.stationsClosed
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.components.AccentAction
 import com.repsrox.app.ui.components.Panel
+import com.repsrox.app.ui.components.QuietAction
 import com.repsrox.app.ui.components.RuledRow
 import com.repsrox.app.ui.components.SectionLabel
 import com.repsrox.app.ui.components.SegmentRing
@@ -52,6 +63,10 @@ import com.repsrox.app.ui.theme.oswald
  * and the next run, and the course here is a contiguous list of legs with no
  * transition to time. Station average takes its place — a figure the clock can
  * actually stand behind.
+ *
+ * A sim closed to its last leg goes into the log on its own. One ended early is
+ * banked by Finish, as far as it got, and Clear is the only way off the board
+ * that records nothing.
  */
 @Composable
 fun RaceScreen(viewModel: RepsRoxViewModel) {
@@ -59,6 +74,10 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
     val leg = viewModel.leg
     val onStation = leg.isStation
     val stationNumber = viewModel.stationNumber
+    val finished = viewModel.raceFinished
+    val raced = viewModel.racedSims.collectAsState().value.orEmpty()
+    var clearing by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf<RaceResult?>(null) }
 
     Column(
         Modifier
@@ -88,7 +107,11 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
             }
             Column(Modifier.weight(1f)) {
                 SectionLabel(
-                    if (onStation) "On station" else "On the run",
+                    when {
+                        finished -> "Race run"
+                        onStation -> "On station"
+                        else -> "On the run"
+                    },
                     color = Accent,
                 )
                 Text(
@@ -119,28 +142,45 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (finished) {
+            // Every leg is in and the sim is in the log: all that is left is the next one.
             AccentAction(
-                // A sim yet to be started reads Start, not Resume: there is
-                // nothing to resume until the clock has run.
-                when {
-                    viewModel.raceOn -> "Pause"
-                    viewModel.raceSeconds == 0 -> "Start"
-                    else -> "Resume"
-                },
-                modifier = Modifier.weight(1f),
+                "New race",
+                modifier = Modifier.fillMaxWidth(),
                 verticalPadding = 13.dp,
-                onClick = viewModel::toggleRace,
+                onClick = viewModel::finishRace,
             )
-            AccentAction(
-                if (onStation) "Next run" else "On station",
-                icon = Icons.Filled.KeyboardDoubleArrowRight,
-                modifier = Modifier.weight(1f),
-                background = AccentTint,
-                borderColor = AccentLine,
-                verticalPadding = 13.dp,
-                onClick = viewModel::nextLeg,
-            )
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                AccentAction(
+                    // A sim yet to be started reads Start, not Resume: there is
+                    // nothing to resume until the clock has run.
+                    when {
+                        viewModel.raceOn -> "Pause"
+                        viewModel.raceSeconds == 0 -> "Start"
+                        else -> "Resume"
+                    },
+                    modifier = Modifier.weight(1f),
+                    verticalPadding = 13.dp,
+                    onClick = viewModel::toggleRace,
+                )
+                AccentAction(
+                    if (onStation) "Next run" else "On station",
+                    icon = Icons.Filled.KeyboardDoubleArrowRight,
+                    modifier = Modifier.weight(1f),
+                    background = AccentTint,
+                    borderColor = AccentLine,
+                    verticalPadding = 13.dp,
+                    onClick = viewModel::nextLeg,
+                )
+            }
+            // Nothing to end or throw away until the clock has run.
+            if (viewModel.raceSeconds > 0) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    QuietAction("Finish", modifier = Modifier.weight(1f), onClick = viewModel::finishRace)
+                    QuietAction("Clear", modifier = Modifier.weight(1f), onClick = { clearing = true })
+                }
+            }
         }
 
         Panel(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
@@ -202,6 +242,68 @@ fun RaceScreen(viewModel: RepsRoxViewModel) {
                 }
             }
         }
+
+        if (raced.isNotEmpty()) {
+            val best = bestRace(raced)
+            Column {
+                SectionLabel("Past races", modifier = Modifier.padding(bottom = 4.dp))
+                raced.forEach { result ->
+                    RuledRow(verticalPadding = 9.dp, onClick = { removing = result }) {
+                        Text(
+                            result.finishedAt.dayLabel(),
+                            color = TextMuted,
+                            style = inter(11f),
+                            modifier = Modifier.width(74.dp),
+                        )
+                        Text(
+                            if (result.complete) "Full course" else "Ended · ${result.stationsClosed} of 8 stations",
+                            color = if (result.complete) TextPrimary else TextSecondary,
+                            style = inter(12f, FontWeight.W500, lineHeight = 1.3f),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            if (result == best) "best" else "",
+                            color = Accent,
+                            style = mono(10.5f),
+                            modifier = Modifier.padding(end = 10.dp),
+                        )
+                        Text(
+                            formatHours(result.seconds),
+                            color = TextPrimary,
+                            style = mono(12f, FontWeight.W500),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (clearing) {
+        ConfirmDialog(
+            title = "Clear race",
+            body = "The clock and every split on the board go, and nothing is recorded. " +
+                "Finish keeps the race as far as it got.",
+            confirm = "Clear",
+            onDismiss = { clearing = false },
+            onConfirm = {
+                viewModel.clearRace()
+                clearing = false
+            },
+        )
+    }
+
+    removing?.let { result ->
+        ConfirmDialog(
+            title = "Remove race",
+            body = "${formatHours(result.seconds)}, ${result.finishedAt.dayLabel()}. " +
+                "It comes out of the log for good.",
+            confirm = "Remove",
+            onDismiss = { removing = null },
+            onConfirm = {
+                viewModel.removeRace(result)
+                removing = null
+            },
+        )
     }
 }
 

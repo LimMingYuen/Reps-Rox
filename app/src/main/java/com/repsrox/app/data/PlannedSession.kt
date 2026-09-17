@@ -55,6 +55,13 @@ data class PlannedSession(
         else -> DayStatus.PLANNED
     }
 
+    /**
+     * Whether the week's ring counts this as banked. A rest day has nothing to
+     * finish, so it banks itself once its day comes round.
+     */
+    fun banked(today: LocalDate = LocalDate.now()): Boolean =
+        done || (kind == SessionKind.REST && date <= today)
+
     /** The second line of a plan row: where the session stands, then what it holds. */
     fun meta(today: LocalDate = LocalDate.now()): String {
         val standing = when (status(today)) {

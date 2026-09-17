@@ -90,10 +90,11 @@ fun TodayScreen(
     // A rest day is not something to start, so the card looks past it.
     val todaySession = plan.firstOrNull { it.date == today && it.kind != SessionKind.REST }
 
-    // The ring reads this week only, not everything ever planned.
+    // The ring reads this week only, not everything ever planned. Rest days are
+    // on it too: a planned rest is part of the week, and taking it is keeping to it.
     val dates = today.weekStart().weekDates().toSet()
-    val week = plan.filter { it.date in dates && it.kind != SessionKind.REST }
-    val banked = week.count { it.done }
+    val week = plan.filter { it.date in dates }
+    val banked = week.count { it.banked(today) }
     // Week one is the week the plan starts in, so the number means something.
     val weekNumber = plan.minOfOrNull { it.date }
         ?.let { ChronoUnit.WEEKS.between(it.weekStart(), today.weekStart()) + 1 }
@@ -165,7 +166,7 @@ fun TodayScreen(
         WeekRingCard(
             banked = banked,
             planned = week.size,
-            next = week.firstOrNull { !it.done && it.date >= today },
+            next = week.firstOrNull { !it.banked(today) && it.date >= today },
             onSeeWeek = { viewModel.go(Screen.Plan) },
         )
 
@@ -331,7 +332,8 @@ private fun WeekRingCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            SegmentRing(size = 74.dp, done = banked, strokeWidth = 9f) {
+            // No plan still draws the empty eight, rather than a bare circle.
+            SegmentRing(size = 74.dp, done = banked, total = planned.takeIf { it > 0 } ?: 8, strokeWidth = 9f) {
                 Text("$banked/$planned", color = TextPrimary, style = oswald(17f))
             }
             Column(Modifier.weight(1f)) {

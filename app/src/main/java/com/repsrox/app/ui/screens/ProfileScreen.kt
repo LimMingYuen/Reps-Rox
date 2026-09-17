@@ -38,6 +38,7 @@ import com.repsrox.app.data.initialsOf
 import com.repsrox.app.ui.ProfileState
 import com.repsrox.app.ui.ProfileViewModel
 import com.repsrox.app.ui.components.Panel
+import com.repsrox.app.ui.components.QuietAction
 import com.repsrox.app.ui.components.RuledRow
 import com.repsrox.app.ui.components.SectionLabel
 import com.repsrox.app.ui.theme.Accent
@@ -57,6 +58,7 @@ fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
     var booking by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf(false) }
+    var exporting by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -78,6 +80,19 @@ fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
                 empty = "Nothing banked yet. Work a strength session through the " +
                     "tracker and the heaviest set of every lift lands here.",
             )
+
+            QuietAction(
+                "Export month",
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { exporting = true },
+            )
+        }
+    }
+
+    if (exporting) {
+        // Still reading off disk shows nothing for a frame rather than an export short a sheet.
+        viewModel.history.collectAsState().value?.let { history ->
+            ExportMonthDialog(history, onDismiss = { exporting = false })
         }
     }
 
