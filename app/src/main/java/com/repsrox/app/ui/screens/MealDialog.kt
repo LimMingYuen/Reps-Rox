@@ -20,60 +20,58 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.repsrox.app.data.Exercise
-import com.repsrox.app.data.LOAD_RANGE_KG
-import com.repsrox.app.data.NAME_MAX_CHARS
-import com.repsrox.app.data.REPS_RANGE
-import com.repsrox.app.data.SETS_RANGE
-import com.repsrox.app.data.SetUnit
-import com.repsrox.app.data.buildExercise
+import com.repsrox.app.data.KCAL_RANGE
+import com.repsrox.app.data.MACRO_RANGE_G
+import com.repsrox.app.data.MEAL_DETAIL_MAX_CHARS
+import com.repsrox.app.data.MEAL_NAME_MAX_CHARS
+import com.repsrox.app.data.Meal
 import com.repsrox.app.data.sanitise
 import com.repsrox.app.ui.components.AccentAction
-import com.repsrox.app.ui.components.ChoiceChip
 import com.repsrox.app.ui.components.NumberField
 import com.repsrox.app.ui.components.Panel
 import com.repsrox.app.ui.components.PlainTextField
 import com.repsrox.app.ui.components.QuietAction
 import com.repsrox.app.ui.components.SectionLabel
-import com.repsrox.app.ui.components.toDecimal
+import com.repsrox.app.ui.newMeal
 import com.repsrox.app.ui.theme.Accent
 import com.repsrox.app.ui.theme.BorderAction
 import com.repsrox.app.ui.theme.TextFaint
 import com.repsrox.app.ui.theme.TextMeta
 import com.repsrox.app.ui.theme.inter
 import com.repsrox.app.ui.theme.oswald
+import java.time.LocalDate
 
 /**
- * A movement and the work prescribed against it. Sets are laid out uniformly —
- * five of five at 120 kg — which is what a strength session is written as; a set
- * that runs heavy or light is changed on the day, in the live tracker. [initial]
- * opens the dialog pre-filled to edit an exercise already on the board rather
- * than add a new one; [onDelete] is offered only alongside one.
+ * A meal and what it is worth. Figures are optional throughout — a meal you have
+ * named but not costed is a real line on a day still being planned — so only the
+ * name is held to. [initial] opens the dialog pre-filled to edit a meal already
+ * on the day; [onDelete] is offered only alongside one. Editing never disturbs
+ * the check-in: whether you ate it is not something this dialog decides.
  */
 @Composable
-fun AddExerciseDialog(
-    initial: Exercise? = null,
+fun MealDialog(
+    date: LocalDate,
+    initial: Meal? = null,
     onDismiss: () -> Unit,
-    onSave: (Exercise) -> Unit,
+    onSave: (Meal) -> Unit,
     onDelete: (() -> Unit)? = null,
 ) {
-    val initialSet = initial?.sets?.firstOrNull()
     var name by remember { mutableStateOf(initial?.name.orEmpty()) }
-    var sets by remember { mutableStateOf(initial?.sets?.size?.toString().orEmpty()) }
-    var reps by remember { mutableStateOf(initialSet?.reps?.toString().orEmpty()) }
-    var load by remember { mutableStateOf(initialSet?.kg.orEmpty()) }
-    var unit by remember { mutableStateOf(initialSet?.unit ?: SetUnit.REPS) }
+    var detail by remember { mutableStateOf(initial?.detail.orEmpty()) }
+    var kcal by remember { mutableStateOf(initial?.kcal?.takeIf { it > 0 }?.toString().orEmpty()) }
+    var protein by remember { mutableStateOf(initial?.proteinG?.takeIf { it > 0 }?.toString().orEmpty()) }
+    var carbs by remember { mutableStateOf(initial?.carbsG?.takeIf { it > 0 }?.toString().orEmpty()) }
 
-    val setCount = sets.toIntOrNull()
-    val repCount = reps.toIntOrNull()
-    // An empty load is bodyweight, which is a real answer; a typed one must read.
-    val kg = if (load.isBlank()) 0f else load.toDecimal()
+    // A blank figure is zero, which is a real answer; a typed one has to read.
+    val kcalValue = kcal.figure()
+    val proteinValue = protein.figure()
+    val carbsValue = carbs.figure()
 
     val cleanName = sanitise(name)
     val canSave = cleanName.isNotEmpty() &&
-        setCount in SETS_RANGE &&
-        repCount in REPS_RANGE &&
-        kg != null && kg in LOAD_RANGE_KG
+        kcalValue != null && kcalValue in KCAL_RANGE &&
+        proteinValue != null && proteinValue in MACRO_RANGE_G &&
+        carbsValue != null && carbsValue in MACRO_RANGE_G
 
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { if (initial == null) focus.requestFocus() }
@@ -88,17 +86,25 @@ fun AddExerciseDialog(
                 .padding(horizontal = 20.dp),
             contentPadding = PaddingValues(16.dp),
         ) {
-            SectionLabel(if (initial == null) "Add exercise" else "Edit exercise")
+            SectionLabel(if (initial == null) "Add meal" else "Edit meal")
 
             PlainTextField(
                 value = name,
                 onValueChange = { name = it },
-                placeholder = "Back squat",
-                maxChars = NAME_MAX_CHARS,
+                placeholder = "Breakfast",
+                maxChars = MEAL_NAME_MAX_CHARS,
                 modifier = Modifier
                     .padding(top = 14.dp)
                     .focusRequester(focus),
             )
+            PlainTextField(
+                value = detail,
+                onValueChange = { detail = it },
+                placeholder = "Oats, whey, banana",
+                maxChars = MEAL_DETAIL_MAX_CHARS,
+                textStyle = inter(12.5f, lineHeight = 1.3f),
+                modifier = Modifier.padding(top = 10.dp),
+            )
 
             Row(
                 Modifier
@@ -106,54 +112,25 @@ fun AddExerciseDialog(
                     .padding(top = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ChoiceChip(
-                    label = "Reps",
-                    selected = unit == SetUnit.REPS,
-                    modifier = Modifier.weight(1f),
-                    onClick = { unit = SetUnit.REPS },
-                )
-                ChoiceChip(
-                    label = "Metres",
-                    selected = unit == SetUnit.METRES,
-                    modifier = Modifier.weight(1f),
-                    onClick = { unit = SetUnit.METRES },
-                )
-            }
-
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Count("Sets", sets, { sets = it }, "5", Modifier.weight(1f))
-                Count(if (unit == SetUnit.METRES) "Metres" else "Reps", reps, { reps = it }, "5", Modifier.weight(1f))
-                Column(Modifier.weight(1.2f)) {
-                    SectionLabel("Load", tracking = 0.10f, modifier = Modifier.padding(bottom = 5.dp))
-                    NumberField(
-                        value = load,
-                        onValueChange = { load = it },
-                        suffix = "kg",
-                        placeholder = "—",
-                        textStyle = oswald(18f, FontWeight.W500),
-                    )
-                }
+                Figure("Calories", kcal, { kcal = it }, "kcal", Modifier.weight(1.2f))
+                Figure("Protein", protein, { protein = it }, "g", Modifier.weight(1f))
+                Figure("Carbs", carbs, { carbs = it }, "g", Modifier.weight(1f))
             }
 
             Text(
-                "Leave the load empty for bodyweight work.",
+                "Leave a figure empty if you're not counting it.",
                 color = TextFaint,
                 style = inter(10.5f),
                 modifier = Modifier.padding(top = 8.dp),
             )
-            if (sets.isNotBlank() && setCount !in SETS_RANGE) {
-                Hint("Between ${SETS_RANGE.first} and ${SETS_RANGE.last} sets")
+            if (kcal.isNotBlank() && (kcalValue == null || kcalValue !in KCAL_RANGE)) {
+                MealHint("Up to ${KCAL_RANGE.last} kcal")
             }
-            if (reps.isNotBlank() && repCount !in REPS_RANGE) {
-                Hint("Between ${REPS_RANGE.first} and ${REPS_RANGE.last} reps")
+            if (protein.isNotBlank() && (proteinValue == null || proteinValue !in MACRO_RANGE_G)) {
+                MealHint("Up to ${MACRO_RANGE_G.last} g protein")
             }
-            if (load.isNotBlank() && (kg == null || kg !in LOAD_RANGE_KG)) {
-                Hint("Up to ${LOAD_RANGE_KG.endInclusive.toInt()} kg")
+            if (carbs.isNotBlank() && (carbsValue == null || carbsValue !in MACRO_RANGE_G)) {
+                MealHint("Up to ${MACRO_RANGE_G.last} g carbs")
             }
 
             Row(
@@ -168,14 +145,32 @@ fun AddExerciseDialog(
                     modifier = Modifier.weight(1f),
                     borderColor = if (canSave) Accent else BorderAction,
                     onClick = {
-                        if (canSave) onSave(buildExercise(cleanName, setCount!!, repCount!!, kg!!, unit))
+                        if (canSave) {
+                            val cleanDetail = sanitise(detail)
+                            onSave(
+                                initial?.copy(
+                                    name = cleanName,
+                                    detail = cleanDetail,
+                                    kcal = kcalValue!!,
+                                    proteinG = proteinValue!!,
+                                    carbsG = carbsValue!!,
+                                ) ?: newMeal(
+                                    date = date,
+                                    name = cleanName,
+                                    detail = cleanDetail,
+                                    kcal = kcalValue!!,
+                                    proteinG = proteinValue!!,
+                                    carbsG = carbsValue!!,
+                                ),
+                            )
+                        }
                     },
                 )
             }
 
             if (onDelete != null) {
                 QuietAction(
-                    "Remove from board",
+                    "Remove from the day",
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 10.dp),
@@ -187,11 +182,11 @@ fun AddExerciseDialog(
 }
 
 @Composable
-private fun Count(
+private fun Figure(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
-    placeholder: String,
+    suffix: String,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier) {
@@ -199,8 +194,8 @@ private fun Count(
         NumberField(
             value = value,
             onValueChange = onValueChange,
-            suffix = "",
-            placeholder = placeholder,
+            suffix = suffix,
+            placeholder = "—",
             textStyle = oswald(18f, FontWeight.W500),
             decimal = false,
         )
@@ -208,6 +203,9 @@ private fun Count(
 }
 
 @Composable
-private fun Hint(text: String) {
+private fun MealHint(text: String) {
     Text(text, color = TextMeta, style = inter(10.5f), modifier = Modifier.padding(top = 5.dp))
 }
+
+/** A blank figure is zero; anything else has to read as a whole one. */
+private fun String.figure(): Int? = if (isBlank()) 0 else toIntOrNull()

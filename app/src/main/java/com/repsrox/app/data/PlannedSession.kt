@@ -9,8 +9,11 @@ enum class SessionKind { STRENGTH, RUN, RACE, REST }
 /** Where a session stands, read off its date and whether it was finished. */
 enum class DayStatus { DONE, TODAY, PLANNED, REST }
 
+/** What a set's first figure counts. Metres are a distance, so they bank no volume. */
+enum class SetUnit { REPS, METRES }
+
 /** One prescription inside a session: eight reps at a hundred kilos. */
-data class WorkSet(val reps: Int, val kg: String)
+data class WorkSet(val reps: Int, val kg: String, val unit: SetUnit = SetUnit.REPS)
 
 /**
  * A movement and the sets planned for it. [target] is the line the session
@@ -36,13 +39,9 @@ data class PlannedSession(
 ) {
     val plannedSets: Int get() = exercises.sumOf { it.sets.size }
 
-    /** Planned tonnage — reps × load over every set that carries one. */
+    /** Planned tonnage — reps × load over every set that carries one, metres carrying none. */
     val volumeKg: Float
-        get() = exercises.fold(0f) { total, exercise ->
-            total + exercise.sets.fold(0f) { sum, set ->
-                sum + set.reps * (set.kg.toFloatOrNull() ?: 0f)
-            }
-        }
+        get() = exercises.sumOf { exercise -> exercise.sets.sumOf { it.volumeKg.toDouble() } }.toFloat()
 
     /**
      * A rest day is always rest; anything else is done once it has been finished,
@@ -84,24 +83,30 @@ const val NAME_MAX_CHARS = 40
 /**
  * Builds an exercise from what the add-exercise dialog collects, writing the same
  * target line the design's own exercises carry. A load of zero reads as bodyweight
- * and is left off both the target and the set chips.
+ * and is left off both the target and the set chips. A metres exercise states its
+ * reps figure as a distance, the way a sled push or a carry is actually prescribed.
  */
-fun buildExercise(name: String, sets: Int, reps: Int, kg: Float): Exercise {
+fun buildExercise(name: String, sets: Int, reps: Int, kg: Float, unit: SetUnit = SetUnit.REPS): Exercise {
     val load = if (kg > 0f) formatLoad(kg) else ""
+    val repsPart = if (unit == SetUnit.METRES) "$reps m" else "$reps"
     return Exercise(
         name = name,
-        target = if (load.isEmpty()) "$sets × $reps" else "$sets × $reps · $load kg",
-        sets = List(sets) { WorkSet(reps, load) },
+        target = if (load.isEmpty()) "$sets × $repsPart" else "$sets × $repsPart · $load kg",
+        sets = List(sets) { WorkSet(reps, load, unit) },
     )
 }
 
 /**
- * What an exercise reads as once it has been worked through: "5 / 5 / 5 · 120 kg".
- * A load shared by every set is called once at the end, as it is on paper.
+ * What an exercise reads as once it has been worked through: "5 / 5 / 5 · 120 kg",
+ * or "4 × 25 m · 150 kg" for a carry, where every set covers the same distance.
  */
 fun Exercise.logLine(): String {
-    val reps = sets.joinToString(" / ") { it.reps.toString() }
     val load = sets.map { it.kg }.distinct().singleOrNull()?.takeIf { it.isNotBlank() }
+    if (sets.firstOrNull()?.unit == SetUnit.METRES) {
+        val distance = "${sets.size} × ${sets.first().reps} m"
+        return if (load == null) distance else "$distance · $load kg"
+    }
+    val reps = sets.joinToString(" / ") { it.reps.toString() }
     return if (load == null) reps else "$reps · $load kg"
 }
 

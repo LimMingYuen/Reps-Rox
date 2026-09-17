@@ -1,9 +1,7 @@
 package com.repsrox.app.data
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.time.DayOfWeek
 import java.time.LocalDate
 
 class PlanCodecTest {
@@ -62,6 +60,22 @@ class PlanCodecTest {
         val plan = listOf(session.copy(name = name))
         assertEquals(name, decodePlan(encodePlan(plan)).single().name)
     }
+
+    @Test
+    fun `round trips a metres set`() {
+        val sled = buildExercise("Sled push", sets = 4, reps = 25, kg = 150f, unit = SetUnit.METRES)
+        val plan = listOf(session.copy(exercises = listOf(sled)))
+        val decoded = decodePlan(encodePlan(plan)).single().exercises.single()
+        assertEquals(SetUnit.METRES, decoded.sets.first().unit)
+        assertEquals(sled, decoded)
+    }
+
+    @Test
+    fun `a reps set still decodes from an old two-field record`() {
+        // On-disk records written before metres existed carry only reps and kg.
+        val raw = "a1|2026-08-15|STRENGTH|0|Lower push||Back squat~5 × 5~5x120"
+        assertEquals(SetUnit.REPS, decodePlan(raw).single().exercises.single().sets.first().unit)
+    }
 }
 
 class PlannedSessionTest {
@@ -116,15 +130,37 @@ class PlannedSessionTest {
     }
 
     @Test
+    fun `a metres target states its distance, the way a carry is actually written`() {
+        assertEquals(
+            "4 × 25 m · 150 kg",
+            buildExercise("Sled push", 4, 25, 150f, SetUnit.METRES).target,
+        )
+        assertEquals("4 × 25 m", buildExercise("Sprint", 4, 25, 0f, SetUnit.METRES).target)
+    }
+
+    @Test
     fun `a log line calls a shared load once and drops it when there is none`() {
         assertEquals("5 / 5 / 5 / 5 / 5 · 120 kg", buildExercise("Back squat", 5, 5, 120f).logLine())
         assertEquals("12 / 12 / 12", buildExercise("Burpees", 3, 12, 0f).logLine())
     }
 
     @Test
-    fun `the seed covers a whole week, one session a day`() {
-        assertEquals(7, WEEK_TEMPLATE.size)
-        assertEquals(DayOfWeek.entries, WEEK_TEMPLATE.map { it.dayOfWeek })
-        assertTrue(WEEK_TEMPLATE.any { it.exercises.isNotEmpty() })
+    fun `a metres log line calls the distance covered, not a rep count`() {
+        assertEquals(
+            "4 × 25 m · 150 kg",
+            buildExercise("Sled push", 4, 25, 150f, SetUnit.METRES).logLine(),
+        )
+    }
+
+    @Test
+    fun `a metres set carries no tonnage`() {
+        val carry = PlannedSession(
+            id = "a1",
+            date = today,
+            name = "Loaded carries",
+            kind = SessionKind.STRENGTH,
+            exercises = listOf(buildExercise("Farmers carry", 4, 40, 32f, SetUnit.METRES)),
+        )
+        assertEquals(0f, carry.volumeKg, 0.01f)
     }
 }

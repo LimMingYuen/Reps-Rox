@@ -12,6 +12,10 @@ import java.time.LocalDate
 /**
  * The plan, in the database: a row per session, its exercises and their sets in
  * tables of their own, so the plan can be asked questions rather than only read whole.
+ *
+ * Nothing is seeded. A week nobody has written reads as an empty plan, which
+ * the week and today screens both say plainly — a block the athlete did not
+ * write is not a block they are following.
  */
 class PlanRepository(context: Context) {
 
@@ -49,29 +53,3 @@ fun sanitise(text: String): String =
     text.filterNot { it == FIELD || it == EXERCISE || it == EXERCISE_FIELD || it == '\n' || it == '\r' }
         .trim()
 
-// ── Seed ────────────────────────────────────────────────────────────────────
-
-/**
- * A first-run plan, so the week opens with the shape the design shows instead of
- * an empty list. It is the design's own week laid onto the week the app is first
- * opened in, so it reads as one whole week rather than straddling two. It is
- * written into the database when that is first set up.
- * Delete this and its use in [LegacyImport] to ship an empty plan.
- */
-internal val PLAN_SEED: List<PlannedSession> by lazy {
-    val today = LocalDate.now()
-    val monday = today.weekStart()
-    WEEK_TEMPLATE.mapIndexed { index, seed ->
-        val date = monday.plusDays((seed.dayOfWeek.value - 1).toLong())
-        PlannedSession(
-            id = "seed-$index",
-            date = date,
-            name = seed.name,
-            kind = seed.kind,
-            note = seed.note,
-            exercises = seed.exercises,
-            // The days already behind you read as banked; the rest are still ahead.
-            done = date.isBefore(today) && seed.kind != SessionKind.REST,
-        )
-    }
-}

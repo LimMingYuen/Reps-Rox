@@ -101,6 +101,7 @@ fun RepsRoxApp(
                     Screen.Plans -> PlansScreen(viewModel)
                     Screen.Build -> BuildSessionScreen(
                         date = viewModel.buildDate,
+                        editing = viewModel.editingSession,
                         onSave = { session ->
                             planViewModel.save(session)
                             // Show the week the session landed in, not the one you left.
@@ -112,7 +113,7 @@ fun RepsRoxApp(
                     Screen.Live -> LiveScreen(viewModel)
                     Screen.Run -> RunScreen(viewModel)
                     Screen.Race -> RaceScreen(viewModel)
-                    Screen.Fuel -> FuelScreen(viewModel)
+                    Screen.Fuel -> FuelScreen()
                     Screen.Body -> BodyScreen()
                     Screen.Summary -> SummaryScreen(viewModel)
                     Screen.Profile -> ProfileScreen()

@@ -27,15 +27,27 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.repsrox.app.data.FuelSummary
 import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.SessionKind
+import com.repsrox.app.data.WeekLoad
+import com.repsrox.app.data.dayLabel
+import com.repsrox.app.data.formatKcal
 import com.repsrox.app.data.formatKilos
+import com.repsrox.app.data.formatMinutes
 import com.repsrox.app.data.formatSigned
 import com.repsrox.app.data.formatTonnes
+import com.repsrox.app.data.formatVolume
 import com.repsrox.app.data.summarise
+import com.repsrox.app.data.summariseFuel
+import com.repsrox.app.data.targetKcal
+import com.repsrox.app.data.totalSets
+import com.repsrox.app.data.volumeKg
 import com.repsrox.app.data.weekDates
+import com.repsrox.app.data.weekLoad
 import com.repsrox.app.data.weekStart
 import com.repsrox.app.ui.BodyViewModel
+import com.repsrox.app.ui.FuelViewModel
 import com.repsrox.app.ui.PlanViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.Screen
@@ -58,20 +70,22 @@ import com.repsrox.app.ui.theme.inter
 import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
 import java.time.LocalDate
+import java.time.format.TextStyle as DateTextStyle
 import java.time.temporal.ChronoUnit
 import java.util.Locale
-import java.time.format.TextStyle as DateTextStyle
 
 @Composable
 fun TodayScreen(
     viewModel: RepsRoxViewModel,
     bodyViewModel: BodyViewModel = viewModel(),
     planViewModel: PlanViewModel = viewModel(),
+    fuelViewModel: FuelViewModel = viewModel(),
 ) {
     val weight = bodyViewModel.weighIns.collectAsState().value
         ?.let { entries -> remember(entries) { summarise(entries) } }
 
     val plan = planViewModel.sessions.collectAsState().value.orEmpty()
+    val bankedSessions = viewModel.bankedSessions.collectAsState().value
     val today = remember { LocalDate.now() }
     // A rest day is not something to start, so the card looks past it.
     val todaySession = plan.firstOrNull { it.date == today && it.kind != SessionKind.REST }
@@ -107,7 +121,7 @@ fun TodayScreen(
         TodaySessionCard(
             session = todaySession,
             onStart = { todaySession?.let(viewModel::open) },
-            onPlan = { viewModel.go(Screen.Build) },
+            onPlan = { viewModel.goBuild(today) },
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -131,11 +145,17 @@ fun TodayScreen(
                     modifier = Modifier.padding(top = 3.dp),
                 )
             }
-            Tile(label = "7-day load", modifier = Modifier.weight(1f)) {
-                Text("612", color = TextPrimary, style = oswald(22f, lineHeight = 1.2f))
+            val load = bankedSessions?.let { log -> remember(log, today) { weekLoad(log, today) } }
+            Tile(label = "Last 7 days", modifier = Modifier.weight(1f)) {
                 Text(
-                    "on plan",
-                    color = TextMeta,
+                    load?.sessions?.toString() ?: "—",
+                    color = TextPrimary,
+                    style = oswald(22f, lineHeight = 1.2f),
+                )
+                Text(
+                    // Still reading off disk: a neutral caption over a claim.
+                    load?.caption() ?: "sessions",
+                    color = if (load != null && load.volumeKg > 0f) Accent else TextMeta,
                     style = inter(11f, lineHeight = 1f),
                     modifier = Modifier.padding(top = 3.dp),
                 )
@@ -149,16 +169,30 @@ fun TodayScreen(
             onSeeWeek = { viewModel.go(Screen.Plan) },
         )
 
-        FuelStrip(onClick = { viewModel.go(Screen.Fuel) })
+        val fuel = fuelViewModel.meals.collectAsState().value
+            ?.filter { it.date == today }
+            ?.let { meals ->
+                remember(meals, todaySession) {
+                    summariseFuel(meals, targetKcal(training = todaySession != null))
+                }
+            }
+        FuelStrip(summary = fuel, onClick = { viewModel.go(Screen.Fuel) })
 
-        val recent = week.filter { it.done }.takeLast(RECENT_ROWS).asReversed()
-        if (recent.isNotEmpty()) {
-            Column(Modifier.padding(top = 2.dp)) {
-                SectionLabel("Last sessions", modifier = Modifier.padding(bottom = 9.dp))
-                recent.forEach { session ->
-                    RuledRow(onClick = { viewModel.open(session) }) {
+        Column(Modifier.padding(top = 2.dp)) {
+            SectionLabel("Last sessions", modifier = Modifier.padding(bottom = 9.dp))
+            val banked = bankedSessions
+            when {
+                banked == null -> Unit
+                banked.isEmpty() -> Text(
+                    "Nothing banked yet. Finish a session and it lands here.",
+                    color = TextMeta,
+                    style = inter(11.5f, lineHeight = 1.5f),
+                )
+                // Only strength sessions are banked, so they all read as one kind.
+                else -> banked.take(3).forEach { session ->
+                    RuledRow(onClick = { viewModel.openSession(session) }) {
                         Icon(
-                            session.kind.icon(),
+                            SessionKind.STRENGTH.icon(),
                             contentDescription = null,
                             tint = Accent,
                             modifier = Modifier.size(16.dp),
@@ -169,17 +203,32 @@ fun TodayScreen(
                                 color = TextPrimary,
                                 style = inter(12.5f, FontWeight.W500, lineHeight = 1.3f),
                             )
-                            Text(session.meta(today), color = TextMeta, style = inter(10.5f))
+                            Text(
+                                "${formatMinutes(session.seconds)} · " +
+                                    "${formatVolume(session.volumeKg)} · ${session.totalSets} sets",
+                                color = TextMeta,
+                                style = inter(10.5f),
+                            )
                         }
-                        Text(
-                            session.date.dayOfWeek.getDisplayName(DateTextStyle.SHORT, Locale.US),
-                            color = TextFaint,
-                            style = mono(11f),
-                        )
+                        Text(session.dayLabel(), color = TextFaint, style = mono(11f))
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * The tile's second line. Tonnage rides along as detail rather than leading,
+ * since a week of runs and station work moves no barbell and would otherwise
+ * read as an empty week.
+ */
+private fun WeekLoad.caption(): String {
+    val noun = if (sessions == 1) "session" else "sessions"
+    return when {
+        sessions == 0 -> "bank a session"
+        volumeKg <= 0f -> noun
+        else -> "$noun · ${formatVolume(volumeKg)}"
     }
 }
 
@@ -315,7 +364,7 @@ private fun WeekRingCard(
 }
 
 @Composable
-private fun FuelStrip(onClick: () -> Unit) {
+private fun FuelStrip(summary: FuelSummary?, onClick: () -> Unit) {
     Panel(onClick = onClick, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -327,20 +376,26 @@ private fun FuelStrip(onClick: () -> Unit) {
                 tint = TextMuted,
                 modifier = Modifier.size(19.dp),
             )
+            // Protein is the macro with the hard floor, so it is the one the strip carries.
+            val protein = summary?.macros?.firstOrNull { it.label == "Protein" }
             Column(Modifier.weight(1f)) {
                 Text(
-                    "Protein 148 / 165 g",
+                    protein?.let { "Protein ${it.value}" } ?: "Plan today's meals",
                     color = TextPrimary,
                     style = inter(12.5f, FontWeight.W500, lineHeight = 1.3f),
                 )
                 Meter(
-                    fraction = 0.90f,
+                    fraction = (protein?.percent ?: 0) / 100f,
                     height = 4.dp,
                     track = Track,
                     modifier = Modifier.padding(top = 7.dp),
                 )
             }
-            Text("+320 kcal", color = TextMeta, style = mono(11f))
+            Text(
+                summary?.let { "${formatKcal(it.targetKcal)} kcal" } ?: "—",
+                color = TextMeta,
+                style = mono(11f),
+            )
         }
     }
 }

@@ -141,6 +141,27 @@ fun ApplyPlanDialog(
     }
 }
 
+/** A plain yes or no, for a change worth pausing over that asks for nothing else. */
+@Composable
+fun ConfirmDialog(
+    title: String,
+    body: String,
+    confirm: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    DialogPanel(onDismiss) {
+        SectionLabel(title)
+        Text(
+            body,
+            color = TextFaint,
+            style = inter(10.5f, lineHeight = 1.5f),
+            modifier = Modifier.padding(top = 10.dp),
+        )
+        Actions(confirm = confirm, enabled = true, onDismiss = onDismiss, onConfirm = onConfirm)
+    }
+}
+
 @Composable
 private fun DialogPanel(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Dialog(
@@ -222,7 +243,7 @@ private fun Actions(
     }
 }
 
-private fun LocalDate.weekLabel(today: LocalDate): String = when (this) {
+internal fun LocalDate.weekLabel(today: LocalDate): String = when (this) {
     today.weekStart() -> "This week"
     today.weekStart().plusWeeks(1) -> "Next week"
     today.weekStart().minusWeeks(1) -> "Last week"

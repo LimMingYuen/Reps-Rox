@@ -32,6 +32,7 @@ import com.repsrox.app.data.SessionKind
 import com.repsrox.app.data.formatTonnes
 import com.repsrox.app.data.plural
 import com.repsrox.app.data.sanitise
+import com.repsrox.app.data.volumeKg
 import com.repsrox.app.ui.components.AccentAction
 import com.repsrox.app.ui.components.ChoiceChip
 import com.repsrox.app.ui.components.DateStepper
@@ -57,22 +58,26 @@ import java.util.UUID
 /**
  * Where a session is written. A strength session is built exercise by exercise
  * and is not worth saving until it holds one; everything else is a name, a day
- * and the line it is described by.
+ * and the line it is described by. [editing] opens the screen pre-filled to
+ * revise a session already on the plan, keeping its id and done state, rather
+ * than build a fresh one.
  */
 @Composable
 fun BuildSessionScreen(
     date: LocalDate,
+    editing: PlannedSession? = null,
     onSave: (PlannedSession) -> Unit,
     onCancel: () -> Unit,
 ) {
     val today = remember { LocalDate.now() }
 
-    var name by remember { mutableStateOf("") }
-    var kind by remember { mutableStateOf(SessionKind.STRENGTH) }
-    var day by remember { mutableStateOf(date) }
-    var note by remember { mutableStateOf("") }
-    val exercises = remember { mutableStateListOf<Exercise>() }
+    var name by remember { mutableStateOf(editing?.name.orEmpty()) }
+    var kind by remember { mutableStateOf(editing?.kind ?: SessionKind.STRENGTH) }
+    var day by remember { mutableStateOf(editing?.date ?: date) }
+    var note by remember { mutableStateOf(editing?.note.orEmpty()) }
+    val exercises = remember { mutableStateListOf<Exercise>().apply { editing?.exercises?.let(::addAll) } }
     var adding by remember { mutableStateOf(false) }
+    var editingIndex by remember { mutableStateOf<Int?>(null) }
 
     val cleanName = sanitise(name)
     // A strength session with nothing in it would open a live tracker with nothing
@@ -132,7 +137,7 @@ fun BuildSessionScreen(
         }
 
         if (kind == SessionKind.STRENGTH) {
-            ExerciseList(exercises, onRemove = { exercises.removeAt(it) })
+            ExerciseList(exercises, onEdit = { editingIndex = it }, onRemove = { exercises.removeAt(it) })
             AccentAction(
                 "Add exercise",
                 icon = Icons.Filled.Add,
@@ -144,14 +149,13 @@ fun BuildSessionScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             QuietAction("Cancel", modifier = Modifier.weight(1f), onClick = onCancel)
             AccentAction(
-                "Save session",
+                if (editing == null) "Save session" else "Save changes",
                 modifier = Modifier.weight(1f),
                 borderColor = if (canSave) Accent else BorderAction,
                 onClick = {
                     if (!canSave) return@AccentAction
                     onSave(
-                        PlannedSession(
-                            id = UUID.randomUUID().toString(),
+                        (editing ?: PlannedSession(id = UUID.randomUUID().toString(), date = day, name = cleanName, kind = kind)).copy(
                             date = day,
                             name = cleanName,
                             kind = kind,
@@ -169,9 +173,24 @@ fun BuildSessionScreen(
     if (adding) {
         AddExerciseDialog(
             onDismiss = { adding = false },
-            onAdd = { exercise ->
+            onSave = { exercise ->
                 exercises.add(exercise)
                 adding = false
+            },
+        )
+    }
+
+    editingIndex?.let { index ->
+        AddExerciseDialog(
+            initial = exercises[index],
+            onDismiss = { editingIndex = null },
+            onSave = { exercise ->
+                exercises[index] = exercise
+                editingIndex = null
+            },
+            onDelete = {
+                exercises.removeAt(index)
+                editingIndex = null
             },
         )
     }
@@ -184,7 +203,7 @@ private fun ColumnScope.Field(label: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun ExerciseList(exercises: List<Exercise>, onRemove: (Int) -> Unit) {
+private fun ExerciseList(exercises: List<Exercise>, onEdit: (Int) -> Unit, onRemove: (Int) -> Unit) {
     Column {
         Row(
             Modifier.fillMaxWidth().padding(bottom = 4.dp),
@@ -209,7 +228,7 @@ private fun ExerciseList(exercises: List<Exercise>, onRemove: (Int) -> Unit) {
         }
 
         exercises.forEachIndexed { index, exercise ->
-            RuledRow(verticalPadding = 10.dp) {
+            RuledRow(onClick = { onEdit(index) }, verticalPadding = 10.dp) {
                 Text(
                     "${index + 1}",
                     color = TextDim,
@@ -241,11 +260,7 @@ private fun ExerciseList(exercises: List<Exercise>, onRemove: (Int) -> Unit) {
             }
         }
 
-        val volume = exercises.fold(0f) { total, exercise ->
-            total + exercise.sets.fold(0f) { sum, set ->
-                sum + set.reps * (set.kg.toFloatOrNull() ?: 0f)
-            }
-        }
+        val volume = exercises.sumOf { exercise -> exercise.sets.sumOf { it.volumeKg.toDouble() } }.toFloat()
         if (volume > 0f) {
             Row(
                 Modifier.padding(top = 12.dp),

@@ -50,7 +50,7 @@ RepsRox/
 │       ├── main/
 │       │   ├── java/com/repsrox/app/
 │       │   │   ├── MainActivity.kt
-│       │   │   ├── data/DemoData.kt        # Sample content, stands in for a store
+│       │   │   ├── data/                     # Models, repositories, and DemoData.kt
 │       │   │   └── ui/
 │       │   │       ├── RepsRoxApp.kt       # Top bar, screen switch, bottom nav
 │       │   │       ├── RepsRoxViewModel.kt # Session/timer state + clock formatting
@@ -71,32 +71,31 @@ RepsRox/
 
 ### Screens
 
-`Today`, `The week`, `My plans` (saved weeks), `New session` (the session
-builder), `Session` (live strength logging), `Run`, `Race sim`, `Fuel`, `Body`,
-`Summary` and `Profile`. Five bottom-bar destinations own them in groups — Train
-covers the week, the plan shelf, the builder, the live session, run and summary;
-You covers profile and body — and Back walks out to the group's root.
+`Today`, `The week`, `Session` (live strength logging), `Run`, `Race sim`,
+`Fuel`, `Body`, `Summary` and `Profile`. Five bottom-bar destinations own them in
+groups — Train covers the week, live session, run and summary; You covers profile
+and body — and Back walks out to the group's root.
 
-### What is real
+The week, meals, weigh-ins and finished strength sessions are kept on disk
+(DataStore); the run and the race sim are still fixed sample data.
 
-The plan and the weigh-in log are written to disk (Preferences DataStore, one
-record per line — see `PlanRepository`, `TemplateRepository` and
-`WeightRepository`).
+### Plan documents
 
-Sessions are built, opened, worked through and marked off from the app; finishing
-one in the live tracker marks it off the week. The week screen shows one week at
-a time and steps between them.
+The week exports as a Markdown document (Train → Export) that can be edited by
+hand and read back in. Two sections are applied on import:
 
-**Reusable plans.** A week worth repeating is saved from the week screen, then
-laid down from `My plans` over as many weeks as you choose. Applying writes real
-dated sessions, so a week can be changed afterwards without touching the plan it
-came from; sessions already finished are never overwritten.
+- `## Sessions` — a table of exercises per dated strength session. A date with
+  no matching session on the plan is dropped, since there is nothing to attach
+  the edit to.
+- `## Meals` — a table of meals per date. A date the document carries replaces
+  whatever that day held; dates it leaves out are untouched, and a meal day does
+  not need a session on it. Check-ins are never exported and survive a re-import,
+  because the document plans what you will eat rather than recording what you ate.
 
-The plan store opens on a first-run seed drawn from the design's own content —
-laid onto the week of first launch, with the days already past reading as banked
-— so a fresh install is not an empty app; the first write folds the seed onto
-disk. The race sim, run tracker, fuel log and profile are still fixed sample
-data, as are the session clock and the personal-record banner on the summary.
+`## Context` (recent training and weigh-ins) is printed for reference and always
+ignored on the way back in. Meals are also yours to add, edit and remove on the
+Fuel screen, a day at a time; only meals you have checked in count towards the
+day's macros.
 
 ## Running on a Device/Emulator
 

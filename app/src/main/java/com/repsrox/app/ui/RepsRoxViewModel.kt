@@ -1,34 +1,49 @@
 package com.repsrox.app.ui
 
+import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.toMutableStateList
-import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.repsrox.app.data.EXERCISES
 import com.repsrox.app.data.Exercise
 import com.repsrox.app.data.LEGS
-import com.repsrox.app.data.MEALS
+import com.repsrox.app.data.LoggedExercise
+import com.repsrox.app.data.PlanRepository
 import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.RUN_SECONDS_PER_KM
+import com.repsrox.app.data.Session
 import com.repsrox.app.data.SessionKind
+import com.repsrox.app.data.SessionRepository
 import com.repsrox.app.data.WorkoutProgress
 import com.repsrox.app.data.WorkoutRepository
+import com.repsrox.app.data.formatMinutes
 import com.repsrox.app.data.weekStart
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
 import java.util.Locale
 
 /**
- * Everything the design's script block kept in component state. Initial values
- * are the design's, so the app opens mid-week with a session part-logged.
+ * Everything the design's script block kept in component state. Every clock
+ * here starts at zero and stopped: opening a board is not starting the work on
+ * it, which is what the Start button is for.
+ *
+ * The strength session is the one thing here that outlives the process: finishing
+ * it writes it to [SessionRepository] and the summary reads it back. The run and
+ * the race hold their splits only as long as the process lives, but a session
+ * killed mid-way — the process, not the athlete — picks back up where the
+ * tracker last saved it, through [WorkoutRepository].
  */
 class RepsRoxViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val sessions = SessionRepository(application)
+    private val plans = PlanRepository(application)
     private val workouts = WorkoutRepository(application)
 
     var screen by mutableStateOf(Screen.Today)
@@ -49,64 +64,85 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
     var buildDate by mutableStateOf(LocalDate.now())
         private set
 
-    /** Sets banked per exercise, indexed alongside [activeExercises]. */
-    val setsDone = mutableStateListOf(2, 0, 0, 0, 0)
+    /** The session the builder is editing, or null when it's building a fresh one. */
+    var editingSession by mutableStateOf<PlannedSession?>(null)
+        private set
+
+    /** Sets banked per exercise, indexed alongside [activeExercises]. Sized by [open]. */
+    val setsDone = mutableStateListOf<Int>()
 
     var currentExercise by mutableIntStateOf(0)
         private set
 
-    var restSeconds by mutableIntStateOf(96)
+    var restSeconds by mutableIntStateOf(0)
         private set
 
-    /** The session clock. It only runs once Start is pressed, never on arrival. */
-    var liveSeconds by mutableIntStateOf(0)
+    /** The live session's own clock, from the moment a session is opened. */
+    var sessionSeconds by mutableIntStateOf(0)
         private set
 
-    var liveOn by mutableStateOf(false)
+    /** True only while a session is being worked. Opening the board starts one. */
+    var sessionLive by mutableStateOf(false)
         private set
 
-    // Like the session clock, the run and race clocks wait for Start.
+    /** The run's own clock. Starts at zero and stopped: opening the board is not running. */
     var runSeconds by mutableIntStateOf(0)
         private set
 
     var runOn by mutableStateOf(false)
         private set
 
+    /** The sim's own clock, on the same terms as the run's — Start begins it, not arriving. */
     var raceSeconds by mutableIntStateOf(0)
         private set
 
     var raceOn by mutableStateOf(false)
         private set
 
-    var legIndex by mutableIntStateOf(0)
+    /** Kilometres closed, in the order they were run. What the splits table shows. */
+    val runSplits = mutableStateListOf<Int>()
+
+    /** Legs closed, in course order, each at whatever the clock said it took. */
+    val legSeconds = mutableStateListOf<Int>()
+
+    /** Which banked session the summary shows. Null means the newest one. */
+    var viewedSession by mutableStateOf<Instant?>(null)
         private set
 
-    /** Keys of the meals checked off today. */
-    val mealsLogged = listOf("b", "l").toMutableStateList()
+    /** Null until the first read off disk lands, so the summary does not flash its empty state. */
+    val bankedSessions: StateFlow<List<Session>?> = sessions.sessions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     // ── Derived ─────────────────────────────────────────────────────────────
 
-    /**
-     * What the live tracker works through. A session with no exercises of its own
-     * — a run, or one of the design's own week rows — falls back to the design's
-     * session rather than opening a tracker with nothing in it.
-     */
+    /** What the live tracker works through — the opened session's own board. */
     val activeExercises: List<Exercise>
-        get() = activeSession?.exercises?.takeIf { it.isNotEmpty() } ?: EXERCISES
+        get() = activeSession?.exercises.orEmpty()
 
     val plannedSets: Int get() = activeExercises.sumOf { it.sets.size }
 
     val totalSetsDone: Int get() = setsDone.sum()
 
-    /** How long the active session ran, off whichever clock timed it. */
-    val sessionSeconds: Int
-        get() = when (activeSession?.kind) {
-            SessionKind.RUN -> runSeconds
-            SessionKind.RACE -> raceSeconds
-            else -> liveSeconds
-        }
+    /**
+     * The leg being raced: the one after everything closed. The last leg holds
+     * once it is closed, so a finished sim has somewhere to sit.
+     */
+    val legIndex: Int get() = legSeconds.size.coerceAtMost(LEGS.lastIndex)
 
     val leg get() = LEGS[legIndex]
+
+    /** True once every leg has been closed. */
+    val raceFinished: Boolean get() = legSeconds.size == LEGS.size
+
+    /** The clock on the leg in progress — the race clock less everything banked. */
+    val currentLegSeconds: Int get() = raceSeconds - legSeconds.sum()
+
+    /** The clock on the kilometre in progress. */
+    val currentLapSeconds: Int get() = runSeconds - runSplits.sum()
+
+    /** Average kilometre so far. Null until one has been closed. */
+    val runPace: String?
+        get() = if (runSplits.isEmpty()) null else formatMinutes(runSplits.sum() / runSplits.size)
 
     /** Stations reached so far — the number the race ring and dial show. */
     val stationNumber: Int
@@ -116,60 +152,27 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
     val runKilometres: String
         get() = String.format(Locale.US, "%.2f", runSeconds / RUN_SECONDS_PER_KM)
 
+    /** The exercises as actually worked, which is what gets banked. */
+    private val bankedExercises: List<LoggedExercise>
+        get() = activeExercises.mapIndexedNotNull { index, exercise ->
+            val done = setsDone.getOrElse(index) { 0 }
+            if (done == 0) null else LoggedExercise(exercise.name, exercise.sets.take(done))
+        }
+
     // ── Intents ─────────────────────────────────────────────────────────────
 
     fun go(destination: Screen) {
+        // Walking back into the live screen after banking one starts the next.
+        if (destination == Screen.Live && !sessionLive) startSession()
+        // Every route into the summary but picking a session shows the newest.
+        if (destination == Screen.Summary) viewedSession = null
         screen = destination
     }
 
-    fun goToWeek(start: LocalDate) {
-        weekStart = start
-    }
-
-    /** Opens the builder against [date], so a session lands on the day it was added from. */
-    fun goBuild(date: LocalDate) {
-        buildDate = date
-        screen = Screen.Build
-    }
-
-    /**
-     * Opens a session off the plan: what has been done opens its summary, what is
-     * still ahead opens the tracker it needs. Reopening the session already being
-     * tracked keeps whatever has been banked into it; a different one picks up
-     * whatever was saved against it, or starts clean. The clock always comes back
-     * paused, so it never runs without being asked to.
-     */
-    fun open(session: PlannedSession) {
-        if (session.id != activeSession?.id) {
-            persist()
-            activeSession = session
-            val exercises = session.exercises.takeIf { it.isNotEmpty() } ?: EXERCISES
-            setsDone.clear()
-            setsDone.addAll(List(exercises.size) { 0 })
-            currentExercise = 0
-            restSeconds = 0
-            liveSeconds = 0
-            liveOn = false
-            when (session.kind) {
-                SessionKind.RUN -> {
-                    runSeconds = 0
-                    runOn = false
-                }
-                SessionKind.RACE -> {
-                    raceSeconds = 0
-                    raceOn = false
-                    legIndex = 0
-                }
-                else -> Unit
-            }
-            if (!session.done) restore(session.id, exercises)
-        }
-        screen = when {
-            session.done -> Screen.Summary
-            session.kind == SessionKind.RUN -> Screen.Run
-            session.kind == SessionKind.RACE -> Screen.Race
-            else -> Screen.Live
-        }
+    /** Opens one particular banked session, rather than whichever is newest. */
+    fun openSession(session: Session) {
+        viewedSession = session.finishedAt
+        screen = Screen.Summary
     }
 
     fun back(): Boolean {
@@ -193,20 +196,95 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         persist()
     }
 
-    fun toggleLive() {
-        liveOn = !liveOn
-        persist()
-    }
-
-    /** Stops the clock and drops the saved progress — a banked session has none to resume. */
-    fun finishLive() {
-        liveOn = false
-        runOn = false
-        activeSession?.let { session -> viewModelScope.launch { workouts.clear(session.id) } }
-    }
-
     fun skipRest() {
         restSeconds = 0
+    }
+
+    /**
+     * Writes the session to disk and opens its summary. A session with nothing
+     * banked in it is worth no record, so it just ends.
+     */
+    fun finishSession() {
+        val worked = bankedExercises
+        val opened = activeSession
+        if (worked.isNotEmpty()) {
+            val session = Session(
+                finishedAt = Instant.now(),
+                name = opened?.name ?: "Session",
+                seconds = sessionSeconds,
+                exercises = worked,
+            )
+            viewModelScope.launch { sessions.bank(session) }
+            if (opened != null) viewModelScope.launch { plans.setDone(opened.id, done = true) }
+        }
+        // Banked or not, the session is over — nothing left here to resume.
+        opened?.let { session -> viewModelScope.launch { workouts.clear(session.id) } }
+        sessionLive = false
+        go(Screen.Summary)
+    }
+
+    /** Ends a run or race: marks its plan session done and drops whatever was saved to resume it. */
+    fun endTracked() {
+        val opened = activeSession
+        runOn = false
+        raceOn = false
+        if (opened != null) {
+            viewModelScope.launch { workouts.clear(opened.id) }
+            viewModelScope.launch { plans.setDone(opened.id, done = true) }
+        }
+        go(Screen.Summary)
+    }
+
+    /**
+     * Opens a session off the plan — what the live tracker (or run/race screen)
+     * works through. Reopening the session already being tracked keeps whatever
+     * has been banked into it; a different one picks up whatever was saved
+     * against it, or starts clean.
+     */
+    fun open(session: PlannedSession) {
+        if (session.id != activeSession?.id) persist()
+        activeSession = session
+        setsDone.clear()
+        setsDone.addAll(List(session.exercises.size) { 0 })
+        startSession()
+        startRun()
+        startRace()
+        if (!session.done) restore(session.id, session.exercises)
+        go(
+            when (session.kind) {
+                SessionKind.RUN -> Screen.Run
+                SessionKind.RACE -> Screen.Race
+                SessionKind.STRENGTH, SessionKind.REST -> Screen.Live
+            },
+        )
+    }
+
+    /** Moves the week screen to the week beginning [date]. */
+    fun goToWeek(date: LocalDate) {
+        weekStart = date.weekStart()
+    }
+
+    /** Opens the builder to add a fresh session on [date]. */
+    fun goBuild(date: LocalDate) {
+        buildDate = date
+        editingSession = null
+        go(Screen.Build)
+    }
+
+    /** Opens the builder to edit [session] in place. */
+    fun goEdit(session: PlannedSession) {
+        buildDate = session.date
+        editingSession = session
+        go(Screen.Build)
+    }
+
+    /** Clears the board for the next session. The clock starts at zero, not mid-session. */
+    private fun startSession() {
+        setsDone.indices.forEach { setsDone[it] = 0 }
+        currentExercise = 0
+        restSeconds = 0
+        sessionSeconds = 0
+        sessionLive = true
     }
 
     fun toggleRun() {
@@ -219,24 +297,48 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         persist()
     }
 
+    /** Closes the kilometre in progress at whatever the clock says it took. */
+    fun lap() {
+        val lap = currentLapSeconds
+        // A lap of nothing is a double tap, not a kilometre.
+        if (lap <= 0) return
+        runSplits.add(lap)
+    }
+
+    /** Clears the run board. The clock starts at zero and stopped. */
+    private fun startRun() {
+        runOn = false
+        runSeconds = 0
+        runSplits.clear()
+    }
+
+    /**
+     * Closes the leg being raced and moves on. There is nothing to close on a
+     * sim that has not started, and nothing to move on to once every leg is in.
+     */
     fun nextLeg() {
-        legIndex = (legIndex + 1).coerceAtMost(LEGS.lastIndex)
+        if (raceFinished) return
+        val elapsed = currentLegSeconds
+        if (elapsed <= 0) return
+        legSeconds.add(elapsed)
+        if (raceFinished) raceOn = false
         persist()
     }
 
-    fun toggleMeal(key: String) {
-        if (!mealsLogged.remove(key)) mealsLogged.add(key)
+    /** Clears the sim board, on the same terms as the run's. */
+    private fun startRace() {
+        raceOn = false
+        raceSeconds = 0
+        legSeconds.clear()
     }
 
-    fun isMealLogged(key: String) = key in mealsLogged
-
-    /** One second of wall clock: rest counts down, the two timers count up. */
+    /** One second of wall clock: rest counts down, the timers count up. */
     fun tick() {
         if (restSeconds > 0) restSeconds--
-        if (liveOn) {
-            liveSeconds++
+        if (sessionLive) {
+            sessionSeconds++
             // Often enough that a killed process loses seconds, not the session.
-            if (liveSeconds % 10 == 0) persist()
+            if (sessionSeconds % 10 == 0) persist()
         }
         if (runOn) {
             runSeconds++
@@ -248,16 +350,16 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    /** Writes the tracker's state against the active session. Demo content has no id to save under. */
+    /** Writes the tracker's state against the active session. A banked session has no need to save. */
     private fun persist() {
         val session = activeSession?.takeIf { !it.done } ?: return
         val id = session.id
-        // A run or a race saves its own clock; a race keeps its leg where the
-        // tracker keeps its exercise.
+        // A run or a race saves its own clock; both keep the tracker's exercise
+        // selection alongside, though only the strength session reads it back.
         val progress = when (session.kind) {
             SessionKind.RUN -> WorkoutProgress(runSeconds, 0, setsDone.toList())
             SessionKind.RACE -> WorkoutProgress(raceSeconds, legIndex, setsDone.toList())
-            else -> WorkoutProgress(liveSeconds, currentExercise, setsDone.toList())
+            else -> WorkoutProgress(sessionSeconds, currentExercise, setsDone.toList())
         }
         viewModelScope.launch { workouts.save(id, progress) }
     }
@@ -275,7 +377,6 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
                 }
                 SessionKind.RACE -> {
                     raceSeconds = saved.elapsed
-                    legIndex = saved.currentExercise.coerceIn(0, LEGS.lastIndex)
                     return@launch
                 }
                 else -> Unit
@@ -284,23 +385,7 @@ class RepsRoxViewModel(application: Application) : AndroidViewModel(application)
                 setsDone[index] = done.coerceIn(0, exercises[index].sets.size)
             }
             currentExercise = saved.currentExercise.coerceIn(0, exercises.lastIndex)
-            liveSeconds = saved.elapsed
+            sessionSeconds = saved.elapsed
         }
     }
-
-    init {
-        require(setsDone.size == EXERCISES.size) { "setsDone must cover every exercise" }
-        require(MEALS.map { it.key }.containsAll(mealsLogged)) { "unknown meal key" }
-    }
-}
-
-/** m:ss — the design's short clock. */
-fun formatMinutes(total: Int): String = "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
-
-/** h:mm:ss — the race clock. */
-fun formatHours(total: Int): String {
-    val h = total / 3600
-    val m = (total % 3600) / 60
-    val s = total % 60
-    return "$h:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
 }

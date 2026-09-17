@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -25,7 +26,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -33,15 +33,20 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.repsrox.app.data.DayStatus
 import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.SessionKind
+import com.repsrox.app.data.exportPlan
 import com.repsrox.app.data.plural
+import com.repsrox.app.data.rollingWeek
 import com.repsrox.app.data.weekDates
 import com.repsrox.app.data.weekStart
+import com.repsrox.app.ui.BodyViewModel
+import com.repsrox.app.ui.FuelViewModel
 import com.repsrox.app.ui.PlanViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
 import com.repsrox.app.ui.Screen
 import com.repsrox.app.ui.components.AccentAction
 import com.repsrox.app.ui.components.Panel
 import com.repsrox.app.ui.components.QuietAction
+import com.repsrox.app.ui.components.Step
 import com.repsrox.app.ui.components.VerticalRule
 import com.repsrox.app.ui.components.icon
 import com.repsrox.app.ui.theme.Accent
@@ -59,11 +64,20 @@ import java.util.Locale
 import java.time.format.TextStyle as DateTextStyle
 
 @Composable
-fun PlanScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewModel()) {
+fun PlanScreen(
+    viewModel: RepsRoxViewModel,
+    planViewModel: PlanViewModel = viewModel(),
+    bodyViewModel: BodyViewModel = viewModel(),
+    fuelViewModel: FuelViewModel = viewModel(),
+) {
     val sessions by planViewModel.sessions.collectAsState()
     val today = remember { LocalDate.now() }
     val weekStart = viewModel.weekStart
+    val rollingPlan by planViewModel.rollingPlan.collectAsState()
     var saving by remember { mutableStateOf(false) }
+    var exporting by remember { mutableStateOf(false) }
+    var importing by remember { mutableStateOf(false) }
+    var stopping by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -78,6 +92,9 @@ fun PlanScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
         val week = weekStart.weekDates().toSet()
         val thisWeek = plan.filter { it.date in week }
         val training = thisWeek.count { it.kind != SessionKind.REST }
+        // A week nothing has been written into yet is the plan being printed. Say so,
+        // so a week that fills itself does not look like one someone else planned.
+        val fromPlan = thisWeek.isNotEmpty() && thisWeek.all { rollingWeek(it.id) != null }
 
         WeekHeader(
             weekStart = weekStart,
@@ -87,7 +104,11 @@ fun PlanScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
             number = plan.minOfOrNull { it.date }?.let {
                 ChronoUnit.WEEKS.between(it.weekStart(), weekStart) + 1
             },
-            detail = if (thisWeek.isEmpty()) "empty" else "$training ${plural(training, "session")}",
+            detail = when {
+                thisWeek.isEmpty() -> "empty"
+                fromPlan -> "$training ${plural(training, "session")} · from your plan"
+                else -> "$training ${plural(training, "session")}"
+            },
             onStep = { viewModel.goToWeek(weekStart.plusWeeks(it)) },
         )
 
@@ -100,6 +121,7 @@ fun PlanScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
                         session = session,
                         today = today,
                         onOpen = { viewModel.open(session) },
+                        onEdit = { viewModel.goEdit(session) },
                         onDelete = { planViewModel.delete(session.id) },
                     )
                 }
@@ -126,6 +148,35 @@ fun PlanScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
                 onClick = { viewModel.go(Screen.Plans) },
             )
         }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            QuietAction("Export", modifier = Modifier.weight(1f), onClick = { exporting = true })
+            QuietAction("Import", modifier = Modifier.weight(1f), onClick = { importing = true })
+        }
+
+        // A plan that repeats has to be stoppable, or a week can never be empty again.
+        if (rollingPlan != null) {
+            QuietAction(
+                "Stop following plan",
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { stopping = true },
+            )
+        }
+    }
+
+    if (stopping) {
+        ConfirmDialog(
+            title = "Stop following plan",
+            body = "Weeks ahead go back to empty. Weeks you have already edited or " +
+                "finished keep what they hold, and the plan itself stays in \"My plans\" " +
+                "if you saved it there.",
+            confirm = "Stop",
+            onDismiss = { stopping = false },
+            onConfirm = {
+                planViewModel.clearRollingPlan()
+                stopping = false
+            },
+        )
     }
 
     if (saving) {
@@ -134,6 +185,34 @@ fun PlanScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
             onSave = { name ->
                 planViewModel.saveWeekAsPlan(weekStart, name)
                 saving = false
+            },
+        )
+    }
+
+    if (exporting) {
+        val banked = viewModel.bankedSessions.collectAsState().value.orEmpty()
+        val weighIns = bodyViewModel.weighIns.collectAsState().value.orEmpty()
+        val meals = fuelViewModel.meals.collectAsState().value.orEmpty()
+        ExportPlanDialog(
+            markdown = exportPlan(
+                plan = sessions.orEmpty(),
+                weekStart = weekStart,
+                meals = meals,
+                banked = banked,
+                weighIns = weighIns,
+            ),
+            onDismiss = { exporting = false },
+        )
+    }
+
+    if (importing) {
+        ImportPlanDialog(
+            onDismiss = { importing = false },
+            onApply = { parsed ->
+                // Sessions and meals are stored apart, so a document lands in two places.
+                planViewModel.applyImport(parsed)
+                fuelViewModel.applyImport(parsed)
+                importing = false
             },
         )
     }
@@ -168,34 +247,12 @@ private fun WeekHeader(
     }
 }
 
-/** The week's own name where it has one, and the Monday it runs from otherwise. */
-private fun LocalDate.weekLabel(today: LocalDate): String = when (this) {
-    today.weekStart() -> "This week"
-    today.weekStart().plusWeeks(1) -> "Next week"
-    today.weekStart().minusWeeks(1) -> "Last week"
-    else -> "$dayOfMonth ${month.getDisplayName(DateTextStyle.SHORT, Locale.US)}"
-}
-
-@Composable
-private fun Step(icon: ImageVector, description: String, onClick: () -> Unit) {
-    Icon(
-        icon,
-        contentDescription = description,
-        tint = TextSubtle,
-        modifier = Modifier
-            .size(34.dp)
-            .clickable(onClick = onClick)
-            .padding(6.dp),
-    )
-}
-
 @Composable
 private fun EmptyWeek() {
     Panel {
-        Text("Nothing planned.", color = TextPrimary, style = oswald(20f, FontWeight.W500))
+        Text("Nothing planned this week.", color = TextPrimary, style = oswald(20f, FontWeight.W500))
         Text(
-            "Add sessions one at a time, or lay a saved plan down over this week " +
-                "and the weeks after it.",
+            "Build a session, or lay a saved plan down from \"My plans\".",
             color = TextSubtle,
             style = inter(11.5f, lineHeight = 1.5f),
             modifier = Modifier.padding(top = 8.dp),
@@ -203,15 +260,20 @@ private fun EmptyWeek() {
     }
 }
 
+/**
+ * One row of the week. [status]/[meta] read off [session] itself now — there is
+ * no separate log to correlate against, since a finished session's own figures
+ * are what [PlannedSession.done] and its exercises already carry.
+ */
 @Composable
 private fun SessionRow(
     session: PlannedSession,
     today: LocalDate,
     onOpen: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val status = session.status(today)
-
     // Completed and rest days recede; today and what's still ahead stay at full ink.
     val dayColor = when (status) {
         DayStatus.DONE -> TextMuted
@@ -225,8 +287,8 @@ private fun SessionRow(
     }
 
     Panel(
-        onClick = if (status == DayStatus.REST) null else onOpen,
-        contentPadding = PaddingValues(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+        onClick = onOpen.takeUnless { status == DayStatus.REST },
+        contentPadding = PaddingValues(12.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -237,9 +299,7 @@ private fun SessionRow(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    session.date.dayOfWeek
-                        .getDisplayName(DateTextStyle.SHORT, Locale.US)
-                        .uppercase(),
+                    session.date.dayOfWeek.getDisplayName(DateTextStyle.SHORT, Locale.US).uppercase(),
                     color = dayColor,
                     style = oswald(13f, tracking = 0.06f),
                     textAlign = TextAlign.Center,
@@ -266,7 +326,22 @@ private fun SessionRow(
                 tint = iconColor,
                 modifier = Modifier.size(16.dp),
             )
-            // Drawn small to sit quietly in the row, with a finger-sized target.
+            if (status != DayStatus.REST) {
+                // Drawn small to sit quietly in the row, with a finger-sized target.
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .clickable(onClick = onEdit),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = "Edit ${session.name}",
+                        tint = TextDim,
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
+            }
             Box(
                 Modifier
                     .size(32.dp)
