@@ -178,6 +178,46 @@ class RollingMealsTest {
     }
 
     @Test
+    fun `days the week printed are written down as they pass`() {
+        val settled = settleMealDays(emptyList(), rolling, emptySet(), today.minusDays(3), today)!!
+
+        // The three days behind today, and not today itself — it is still printing.
+        assertEquals(
+            listOf(today.minusDays(3), today.minusDays(2), today.minusDays(1)),
+            settled.map { it.date },
+        )
+        assertEquals(rollingMealId(today.minusDays(3), 0), settled.first().id)
+        assertTrue(settled.none { it.logged })
+    }
+
+    @Test
+    fun `settling leaves alone a day that is already its own business`() {
+        val own = meal("mine", "Brunch", date = today.minusDays(2))
+        val settled = settleMealDays(listOf(own), rolling, setOf(today.minusDays(1)), today.minusDays(3), today)!!
+
+        assertEquals(listOf(own), settled.filter { it.date == today.minusDays(2) })
+        // A day written down and then emptied stays empty; it said its piece already.
+        assertTrue(settled.none { it.date == today.minusDays(1) })
+        assertEquals(1, settled.count { it.date == today.minusDays(3) })
+    }
+
+    @Test
+    fun `there is nothing to settle without a week, or on a day already settled`() {
+        assertNull(settleMealDays(emptyList(), emptyList(), emptySet(), today.minusDays(3), today))
+        assertNull(settleMealDays(emptyList(), rolling, emptySet(), today, today))
+        assertNull(settleMealDays(emptyList(), rolling, emptySet(), today.plusDays(1), today))
+    }
+
+    @Test
+    fun `a settled day survives where the projection no longer reaches it`() {
+        val yesterday = today.minusDays(1)
+        assertTrue(projectMeals(emptyList(), rolling, emptySet(), today).none { it.date == yesterday })
+
+        val settled = settleMealDays(emptyList(), rolling, emptySet(), yesterday, today)!!
+        assertEquals(1, projectMeals(settled, rolling, emptySet(), today).count { it.date == yesterday })
+    }
+
+    @Test
     fun `a new document lands on days ahead already written down`() {
         val tomorrow = today.plusDays(1)
         val stored = listOf(meal("old", "Old", date = tomorrow), meal("past", "Past", date = today.minusDays(1)))
