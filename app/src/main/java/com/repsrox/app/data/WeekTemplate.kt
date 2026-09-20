@@ -181,6 +181,38 @@ fun writeDownWeek(
 }
 
 /**
+ * The weeks from [from]'s up to, but not including, [today]'s, written down as the
+ * plan printed them — or null when there is nothing to write.
+ *
+ * A printed week is worked out at read time and never stored, so the Monday after
+ * it stops being printed there is nothing left of it: a week you planned and never
+ * touched would simply be gone, and the month's export short those sessions.
+ * Settled sessions are unfinished, since none of them was ever marked done.
+ *
+ * Weeks holding sessions of their own are already their own business, and are
+ * left alone exactly as [projectPlan] leaves them.
+ */
+fun settleWeeks(
+    stored: List<PlannedSession>,
+    rolling: WeekTemplate?,
+    from: LocalDate,
+    today: LocalDate,
+): List<PlannedSession>? {
+    if (rolling == null || rolling.sessions.isEmpty()) return null
+    val start = from.weekStart()
+    val end = today.weekStart()
+    if (!start.isBefore(end)) return null
+    val spokenFor = stored.mapTo(mutableSetOf()) { it.date.weekStart() }
+    val printed = generateSequence(start) { it.plusWeeks(1) }
+        .takeWhile { it.isBefore(end) }
+        .filterNot { it in spokenFor }
+        .flatMap { week -> rolling.materialise(week) { index -> rollingId(week, index) } }
+        .toList()
+    if (printed.isEmpty()) return null
+    return (stored + printed).sortedBy { it.date }
+}
+
+/**
  * Lays [plan] over the weeks already written down — this week's and any ahead of
  * it. Weeks holding nothing of their own need no help: the plan prints onto them
  * itself. The week under way does, and that is the week being looked at, so a plan

@@ -12,6 +12,7 @@ import com.repsrox.app.data.applyPlanToWrittenWeeks
 import com.repsrox.app.data.asWeekTemplate
 import com.repsrox.app.data.projectPlan
 import com.repsrox.app.data.rollingWeek
+import com.repsrox.app.data.settleWeeks
 import com.repsrox.app.data.weekStart
 import com.repsrox.app.data.writeDownWeek
 import kotlinx.coroutines.flow.SharingStarted
@@ -47,7 +48,36 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
     val rollingPlan: StateFlow<WeekTemplate?> = rolling.plan
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /**
+     * A week the plan prints is worked out at read time and never stored, so it has
+     * to be made permanent as it passes — otherwise every Monday takes with it the
+     * week that was planned and never touched. Done once per launch.
+     */
+    init {
+        viewModelScope.launch { settle() }
+    }
+
     // ── The week ────────────────────────────────────────────────────────────
+
+    /**
+     * Writes down the weeks the plan has printed that are now behind you, from the
+     * marker the last pass left to the week under way. Idempotent, and deliberately
+     * inert on a database that has never settled: the weeks lost before there was
+     * anything to settle them are gone, and inventing them would be a lie about
+     * what was planned.
+     */
+    private suspend fun settle(today: LocalDate = LocalDate.now()) {
+        val from = repository.settledThrough()
+        val thisWeek = today.weekStart()
+        if (from == null) {
+            repository.setSettledThrough(thisWeek)
+            return
+        }
+        if (!from.isBefore(thisWeek)) return
+        settleWeeks(repository.sessions.first(), rolling.plan.first(), from, today)
+            ?.let { repository.replaceAll(it) }
+        repository.setSettledThrough(thisWeek)
+    }
 
     fun save(session: PlannedSession) {
         viewModelScope.launch {

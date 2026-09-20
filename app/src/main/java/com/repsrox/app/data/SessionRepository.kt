@@ -17,9 +17,8 @@ private val Context.sessionStore: DataStore<Preferences> by preferencesDataStore
 private val LOG_KEY = stringPreferencesKey("sessions")
 
 /**
- * Banked sessions, on disk. Same reasoning as [WeightRepository]: a session a
- * day at most, read whole every time, so one preference holding newline-separated
- * records beats a database.
+ * Banked sessions, on disk: a session a day at most, read whole every time, so
+ * one preference holding newline-separated records beats a database.
  *
  * A record is `epochSecond|seconds|name|exercises`, where exercises are split by
  * `;`, an exercise reads `name:sets`, sets are split by `,`, and a set is

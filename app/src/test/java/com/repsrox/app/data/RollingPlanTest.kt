@@ -106,6 +106,46 @@ class RollingPlanTest {
     }
 
     @Test
+    fun `weeks the plan printed are written down as they pass`() {
+        val settled = settleWeeks(emptyList(), plan, from = monday.minusWeeks(2), today = monday)!!
+
+        // The two weeks behind this one, and not the week under way — it still prints.
+        assertEquals(
+            listOf(monday.minusWeeks(2), monday.minusWeeks(1)),
+            settled.map { it.date.weekStart() }.distinct(),
+        )
+        assertEquals(4, settled.size)
+        assertTrue(settled.none { it.done })
+        assertEquals(listOf("Lower A", "Upper A"), settled.take(2).map { it.name })
+    }
+
+    @Test
+    fun `settling leaves alone a week that is already its own business`() {
+        val own = stored(monday.minusWeeks(1).plusDays(2), id = "mine")
+        val settled = settleWeeks(listOf(own), plan, from = monday.minusWeeks(2), today = monday)!!
+
+        assertEquals(listOf("mine"), settled.filter { it.date.weekStart() == monday.minusWeeks(1) }.map { it.id })
+        assertEquals(2, settled.count { it.date.weekStart() == monday.minusWeeks(2) })
+    }
+
+    @Test
+    fun `there is nothing to settle without a plan, or on a week already settled`() {
+        assertNull(settleWeeks(emptyList(), rolling = null, from = monday.minusWeeks(2), today = monday))
+        assertNull(settleWeeks(emptyList(), plan.copy(sessions = emptyList()), monday.minusWeeks(2), monday))
+        assertNull(settleWeeks(emptyList(), plan, from = monday, today = monday))
+        assertNull(settleWeeks(emptyList(), plan, from = monday.plusWeeks(1), today = monday))
+    }
+
+    @Test
+    fun `a settled week survives where the projection no longer reaches it`() {
+        val lastWeek = monday.minusWeeks(1)
+        assertTrue(projectPlan(emptyList(), plan, today = monday).none { it.date.weekStart() == lastWeek })
+
+        val settled = settleWeeks(emptyList(), plan, from = lastWeek, today = monday)!!
+        assertEquals(2, projectPlan(settled, plan, today = monday).count { it.date.weekStart() == lastWeek })
+    }
+
+    @Test
     fun `a finished week keeps its record when the plan is still in force`() {
         val done = listOf(stored(monday, id = "banked", done = true))
         val projected = projectPlan(done, plan, today = monday, weeks = 2)

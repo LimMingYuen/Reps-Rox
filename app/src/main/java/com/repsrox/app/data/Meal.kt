@@ -190,6 +190,36 @@ fun writeDownMealDay(
 }
 
 /**
+ * The days from [from] up to, but not including, [today], written down as the
+ * rolling week printed them — or null when there is nothing to write.
+ *
+ * A printed day is worked out at read time and never stored, so the morning after
+ * it stops being printed there is nothing left of it: a day you planned and never
+ * touched would simply be gone. Settling it as it passes keeps the plan you ate
+ * off, unchecked, since nothing was ever checked in on it.
+ *
+ * Days holding meals of their own, and days written down and then emptied, are
+ * already their own business and are left alone.
+ */
+fun settleMealDays(
+    stored: List<Meal>,
+    rolling: List<Meal>,
+    written: Set<LocalDate>,
+    from: LocalDate,
+    today: LocalDate,
+): List<Meal>? {
+    if (rolling.isEmpty() || !from.isBefore(today)) return null
+    val spokenFor = stored.mapTo(written.toMutableSet()) { it.date }
+    val printed = generateSequence(from) { it.plusDays(1) }
+        .takeWhile { it.isBefore(today) }
+        .filterNot { it in spokenFor }
+        .flatMap { printMealDay(rolling, it) }
+        .toList()
+    if (printed.isEmpty()) return null
+    return (stored + printed).sortedBy { it.date }
+}
+
+/**
  * The days an imported document lands on: the dates it names, plus its weekday's
  * meals on every day from [today] on that was already written down — those days
  * no longer print from the plan, and a new plan that changed every day but the

@@ -41,6 +41,15 @@ class FuelViewModel(application: Application) : AndroidViewModel(application) {
     var day by mutableStateOf(LocalDate.now())
         private set
 
+    /**
+     * A day the meal week prints is worked out at read time and never stored, so
+     * it has to be made permanent as it passes — otherwise the morning takes with
+     * it every day that was planned and never touched. Done once per launch.
+     */
+    init {
+        viewModelScope.launch { repository.settle() }
+    }
+
     fun goToDay(date: LocalDate) {
         day = date
     }

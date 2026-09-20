@@ -21,10 +21,13 @@ private val ROLLING_KEY = stringPreferencesKey("rolling")
 /** Days ahead that were written down and so no longer print from the rolling week. */
 private val WRITTEN_KEY = stringPreferencesKey("written")
 
+/** The last day the rolling week was settled through — see [MealRepository.settle]. */
+private val SETTLED_KEY = stringPreferencesKey("settled")
+
 /**
  * The meal log, on disk. A day gains a handful of rows at most, so the whole log
  * lives in one preference as newline-separated records — the same bargain
- * [WeightRepository] and [PlanRepository] strike, for the same reason.
+ * [SessionRepository] and [RaceLogRepository] strike, for the same reason.
  *
  * A record is `id|date|name|detail|kcal|protein|carbs|logged`:
  *
@@ -84,6 +87,28 @@ class MealRepository(context: Context) {
         store.edit { prefs -> prefs[MEALS_KEY] = encodeMeals(mealsWithout(month, prefs.log())) }
     }
 
+    /**
+     * Makes permanent the days the rolling week has printed that are now behind
+     * you. A printed day lives only in the projection, so the morning after it
+     * stops being printed there is nothing left of it — a day planned and never
+     * touched would be gone, and the month's export would be short those rows.
+     *
+     * Read once as the log is first taken up. It is idempotent: a marker carries
+     * the day it last ran through, and days already settled are never revisited.
+     * A log that has never seen this starts from today rather than inventing a
+     * history for days that were lost before there was anything to settle them.
+     */
+    suspend fun settle(today: LocalDate = LocalDate.now()) {
+        store.edit { prefs ->
+            val from = prefs.settled()
+            if (from != null && from.isBefore(today)) {
+                settleMealDays(prefs.log(), prefs.rolling(), prefs.written(), from, today)
+                    ?.let { prefs[MEALS_KEY] = encodeMeals(it) }
+            }
+            if (from != today) prefs[SETTLED_KEY] = today.toString()
+        }
+    }
+
     /** Stops repeating the meal week, leaving only the days already written down. */
     suspend fun clearRolling() {
         store.edit { it.remove(ROLLING_KEY) }
@@ -119,6 +144,10 @@ class MealRepository(context: Context) {
 
     private fun Preferences.written(): Set<LocalDate> = this[WRITTEN_KEY].orEmpty().split(",")
         .mapNotNullTo(mutableSetOf()) { runCatching { LocalDate.parse(it) }.getOrNull() }
+
+    /** The day [settle] last ran through, or null on a log that has never settled. */
+    private fun Preferences.settled(): LocalDate? =
+        this[SETTLED_KEY]?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 }
 
 // ── Record format ───────────────────────────────────────────────────────────
