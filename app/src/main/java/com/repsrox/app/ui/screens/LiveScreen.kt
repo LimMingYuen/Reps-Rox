@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,7 +42,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.repsrox.app.data.Exercise
+import com.repsrox.app.data.PlannedSession
 import com.repsrox.app.data.SetUnit
+import com.repsrox.app.data.carryForward
 import com.repsrox.app.data.formatMinutes
 import com.repsrox.app.ui.PlanViewModel
 import com.repsrox.app.ui.RepsRoxViewModel
@@ -70,6 +73,8 @@ import com.repsrox.app.ui.theme.TextSubtle
 import com.repsrox.app.ui.theme.inter
 import com.repsrox.app.ui.theme.mono
 import com.repsrox.app.ui.theme.oswald
+import java.util.Locale
+import java.time.format.TextStyle as DateTextStyle
 
 @Composable
 fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewModel()) {
@@ -78,10 +83,18 @@ fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
     val session = viewModel.activeSession
     var editingSet by remember { mutableStateOf<Int?>(null) }
     var editingExercise by remember { mutableStateOf(false) }
+    val rollingPlan by planViewModel.rollingPlan.collectAsState()
+    var carrying by remember { mutableStateOf<CarryForward?>(null) }
 
     // The board and the plan are the same session, so a change here is written back.
+    // It lands on this week only; a session the rolling plan prints also asks whether
+    // the weeks ahead should take it, or next week would still read the old load.
     fun rewrite(changed: Exercise) {
-        viewModel.updateExercise(viewModel.currentExercise, changed)?.let(planViewModel::save)
+        val index = viewModel.currentExercise
+        viewModel.updateExercise(index, changed)?.let(planViewModel::save)
+        if (session != null && rollingPlan?.carryForward(session, index, exercise, changed) != null) {
+            carrying = CarryForward(session, index, exercise, changed)
+        }
     }
 
     Column(
@@ -261,7 +274,31 @@ fun LiveScreen(viewModel: RepsRoxViewModel, planViewModel: PlanViewModel = viewM
             },
         )
     }
+
+    carrying?.let { carry ->
+        val day = carry.session.date.dayOfWeek.getDisplayName(DateTextStyle.FULL, Locale.US)
+        ConfirmDialog(
+            title = "Keep for the weeks ahead?",
+            body = "Every $day your plan prints from here on will set ${carry.after.name} " +
+                "as you just changed it. Today only leaves the plan as it was.",
+            confirm = "Keep it",
+            dismiss = "Today only",
+            onDismiss = { carrying = null },
+            onConfirm = {
+                planViewModel.carryForward(carry.session, carry.index, carry.before, carry.after)
+                carrying = null
+            },
+        )
+    }
 }
+
+/** A change made on the day, waiting on whether the rolling plan should take it too. */
+private data class CarryForward(
+    val session: PlannedSession,
+    val index: Int,
+    val before: Exercise,
+    val after: Exercise,
+)
 
 /** The design's `rrpulse`: full to 35% and back, over two seconds. */
 @Composable

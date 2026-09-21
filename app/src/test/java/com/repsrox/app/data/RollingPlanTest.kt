@@ -284,4 +284,55 @@ class RollingPlanTest {
     fun `a week holding nothing of its own is left to the plan to print`() {
         assertEquals(emptyList<PlannedSession>(), applyPlanToWrittenWeeks(emptyList(), plan, monday) { "new-$it" })
     }
+
+    // ── Carrying a change made on the day into the plan ──────────────────────
+
+    private val heavier = squat.copy(sets = squat.sets.map { it.copy(kg = "125") })
+
+    @Test
+    fun `a load raised on the day carries into every week the plan prints after`() {
+        val thursday = projectPlan(emptyList(), plan, today = monday, weeks = 1)[1]
+
+        val carried = plan.carryForward(thursday, 0, squat, heavier)!!
+
+        assertEquals(listOf(heavier), carried.sessions[1].exercises)
+        // Only the session changed moves; Monday still reads the old load.
+        assertEquals(listOf(squat), carried.sessions[0].exercises)
+        val nextThursday = projectPlan(emptyList(), carried, today = monday.plusWeeks(1), weeks = 1)[1]
+        assertEquals("125", nextThursday.exercises.single().sets.first().kg)
+    }
+
+    @Test
+    fun `a session written down under a fresh id is found by its weekday`() {
+        val written = PlannedSession("uuid", monday, "Lower A", SessionKind.STRENGTH, exercises = listOf(squat))
+
+        val carried = plan.carryForward(written, 0, squat, heavier)!!
+
+        assertEquals(listOf(heavier), carried.sessions[0].exercises)
+    }
+
+    @Test
+    fun `the exercise is found by name when the day's order has moved`() {
+        val press = buildExercise("Bench press", sets = 3, reps = 8, kg = 80f)
+        val twoLifts = plan.copy(
+            sessions = listOf(plan.sessions[0].copy(exercises = listOf(press, squat))),
+        )
+        val session = twoLifts.materialise(monday) { rollingId(monday, it) }.single()
+
+        // Squat sits first on the board today, second in the plan.
+        val carried = twoLifts.carryForward(session, 0, squat, heavier)!!
+
+        assertEquals(listOf(press, heavier), carried.sessions[0].exercises)
+    }
+
+    @Test
+    fun `nothing to carry when the plan has no such day, lift or change`() {
+        val monday0 = projectPlan(emptyList(), plan, today = monday, weeks = 1)[0]
+        val wednesday = PlannedSession("x", monday.plusDays(2), "Extra", SessionKind.STRENGTH)
+        val deadlift = buildExercise("Deadlift", sets = 3, reps = 5, kg = 180f)
+
+        assertNull(plan.carryForward(wednesday, 0, squat, heavier))
+        assertNull(plan.carryForward(monday0, 0, deadlift, deadlift.copy(target = "3 × 5 · 185 kg")))
+        assertNull(plan.carryForward(monday0, 0, squat, squat))
+    }
 }

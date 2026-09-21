@@ -236,6 +236,39 @@ fun applyPlanToWrittenWeeks(
         .fold(own) { written, week -> applyTemplate(written, plan, week, id) }
 }
 
+/**
+ * The plan with [before] — an exercise in [session] — replaced by [after], so a
+ * change made to it on the day carries on into every week the plan prints from
+ * here. Null when there is nothing to carry: the session's weekday has no match in
+ * the plan, the plan holds no such exercise there, or it already reads as [after].
+ *
+ * A session printed from the plan says where in it it came from; one written down
+ * since (an import lays fresh ids over written weeks) is found by its weekday. The
+ * exercise is found by the name it had before the change, at its own position when
+ * that still lines up.
+ */
+fun WeekTemplate.carryForward(
+    session: PlannedSession,
+    exerciseIndex: Int,
+    before: Exercise,
+    after: Exercise,
+): WeekTemplate? {
+    val day = session.date.dayOfWeek
+    val printedAt = session.id.takeIf { rollingWeek(it) != null }
+        ?.substringAfterLast("-")?.toIntOrNull()
+        ?.takeIf { sessions.getOrNull(it)?.dayOfWeek == day }
+    val slot = printedAt
+        ?: sessions.indexOfFirst { it.dayOfWeek == day && it.kind == session.kind }.takeIf { it >= 0 }
+        ?: return null
+    val exercises = sessions[slot].exercises
+    val at = exerciseIndex.takeIf { exercises.getOrNull(it)?.name == before.name }
+        ?: exercises.indexOfFirst { it.name == before.name }.takeIf { it >= 0 }
+        ?: return null
+    if (exercises[at] == after) return null
+    val changed = sessions[slot].copy(exercises = exercises.toMutableList().also { it[at] = after })
+    return copy(sessions = sessions.toMutableList().also { it[slot] = changed })
+}
+
 /** The id the sample week's sessions were written under, back when one was seeded. */
 private const val SEED_PREFIX = "seed-"
 
