@@ -3,6 +3,7 @@ package com.repsrox.app.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.repsrox.app.data.Exercise
 import com.repsrox.app.data.ParsedPlan
 import com.repsrox.app.data.PlanRepository
 import com.repsrox.app.data.PlannedSession
@@ -10,6 +11,7 @@ import com.repsrox.app.data.RollingPlanRepository
 import com.repsrox.app.data.WeekTemplate
 import com.repsrox.app.data.applyPlanToWrittenWeeks
 import com.repsrox.app.data.asWeekTemplate
+import com.repsrox.app.data.carryForward
 import com.repsrox.app.data.projectPlan
 import com.repsrox.app.data.rollingWeek
 import com.repsrox.app.data.settleWeeks
@@ -146,6 +148,18 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 },
             )
+        }
+    }
+
+    /**
+     * Writes a change made to an exercise on the day into the plan itself, so the
+     * weeks it prints from here pick it up. Weeks already written down keep what
+     * they hold, as they do for any other change to the plan.
+     */
+    fun carryForward(session: PlannedSession, exerciseIndex: Int, before: Exercise, after: Exercise) {
+        viewModelScope.launch {
+            val plan = rolling.plan.first() ?: return@launch
+            plan.carryForward(session, exerciseIndex, before, after)?.let { rolling.set(it) }
         }
     }
 

@@ -33,6 +33,7 @@ fun ConfirmDialog(
     confirm: String,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
+    dismiss: String = "Cancel",
 ) {
     DialogPanel(onDismiss) {
         SectionLabel(title)
@@ -42,7 +43,7 @@ fun ConfirmDialog(
             style = inter(10.5f, lineHeight = 1.5f),
             modifier = Modifier.padding(top = 10.dp),
         )
-        Actions(confirm = confirm, enabled = true, onDismiss = onDismiss, onConfirm = onConfirm)
+        Actions(confirm = confirm, enabled = true, onDismiss = onDismiss, onConfirm = onConfirm, dismiss = dismiss)
     }
 }
 
@@ -70,6 +71,7 @@ private fun Actions(
     enabled: Boolean,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
+    dismiss: String = "Cancel",
 ) {
     Row(
         Modifier
@@ -77,7 +79,7 @@ private fun Actions(
             .padding(top = 18.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        QuietAction("Cancel", modifier = Modifier.weight(1f), onClick = onDismiss)
+        QuietAction(dismiss, modifier = Modifier.weight(1f), onClick = onDismiss)
         AccentAction(
             confirm,
             modifier = Modifier.weight(1f),
